@@ -2,10 +2,10 @@ package main
 
 import (
 	"bufio"
-	"io"
 	"fmt"
-	"os"
 	"github.com/malacalypse/nordlead3"
+	"io"
+	"os"
 )
 
 const (
@@ -13,36 +13,16 @@ const (
 	SYSEX_END   = 0xF7
 )
 
-
 func parseSysexFile(file *os.File, memory *nordlead3.PatchMemory) (int, int, error) {
 	defer file.Close()
-	// returnChan := make(chan *nordlead3.NL3PatchMemory)
-	// nl3PatchMemory := new(nordlead3.NL3PatchMemory)
+
 	validFound, invalidFound := 0, 0
 	reader := bufio.NewReader(file)
 
-	// Read each sysex entity at a time
-	// Message types:
-	// 	0x20 : Program from Slot
-	// 	0x21 : Program from Memory
-	// 	0x28 : Performance from Slot
-	// 	0x29 : Performance from Memory
-	//
-	// Proper header F0 33 XX 09 <message type> 
-	//
-	// Pseudocode:
-	// 1. Scan until you see an F0. Complete if you reach EOF. 
-	// 2. Read the F0 and the next 5 bytes.
-	// 3. Validate the header against the expected value (above)
-	// 4. If valid, reset the cursor at the F0 and read into the buffer until F7. If not valid, leave the cursor where it is and loop.
-	// 5. Pass the entire slug off to the appropriate parser for insertion into the patch memory model.
-	// 6. Loop.
-
-	
 	fmt.Println("Beginning parsing.")
 
 	for {
-		// scan until we see an F0, we hit EOF, or an error occurs. 
+		// scan until we see an F0, we hit EOF, or an error occurs.
 		_, err := reader.ReadBytes(SYSEX_START)
 		if err != nil {
 			if err == io.EOF {
@@ -63,14 +43,14 @@ func parseSysexFile(file *os.File, memory *nordlead3.PatchMemory) (int, int, err
 				return 0, 0, err
 			}
 
-			// nordlead3.ParseSysex(programSysex[:len(programSysex) - 1], memory) // strip the trailing F7
-			err = nordlead3.ParseSysex(nordlead3.Sysex(programSysex), memory)
+			sysex, err := nordlead3.ParseSysex(programSysex)
 			if err == nil {
 				validFound++
+				memory.LoadFromSysex(sysex)
 			} else {
 				invalidFound++
 			}
-		} 
+		}
 	}
 	fmt.Println("Finished parsing.")
 	return validFound, invalidFound, nil
@@ -90,7 +70,7 @@ func main() {
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("Could not open %q: %q\n", filename, err)
-		return 
+		return
 	} else {
 		fmt.Printf("Opening %q\n", filename)
 	}
