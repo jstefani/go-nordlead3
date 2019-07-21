@@ -2,6 +2,7 @@ package nordlead3
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -17,6 +18,12 @@ const (
 	VersionOffset         = 38
 	PatchDataOffset       = 40
 )
+
+type Sysex []byte
+
+func (sysex Sysex) version() float64 {
+	return float64(uint16(sysex[VersionOffset]) << 8 + uint16(sysex[VersionOffset + 1])) / 100.0
+}
 
 type PatchMemory struct {
 	programs 		[8]ProgramBank
@@ -226,7 +233,17 @@ type Performance struct {
 	checksum 				uint8 
 }
 
-func ParseSysex(sysex []byte, memory *PatchMemory) {
+func ParseSysex(sysex Sysex, memory *PatchMemory) error {
+	err := *new(error)
+
+	// Strip leading F0 and trailing F7, if present
+	if sysex[0] == 0xF0 {
+		sysex = sysex[1:]
+	}
+	if sysex[len(sysex) - 1] == 0xF7 {
+		sysex = sysex[:len(sysex) - 1]
+	}
+
 	// Read header to catalogue and identify type
 	messageType := sysex[3]
 	bank 		:= sysex[4]
@@ -235,53 +252,54 @@ func ParseSysex(sysex []byte, memory *PatchMemory) {
 	
 	switch messageType {
 	case ProgramFromSlot, ProgramFromMemory:
-	  ParseProgramSysex(sysex, memory, bank, location, name)
+	  err = ParseProgramSysex(sysex, memory, bank, location, name)
 	case PerformanceFromSlot, PerformanceFromMemory:
-	  ParsePerformanceSysex(sysex, memory, bank, location, name)
+	  err = ParsePerformanceSysex(sysex, memory, bank, location, name)
 	default: 
-	  fmt.Printf("Skipping non-patch sysex (type %#x - %v)\n", messageType, messageType)
+	  err = errors.New(fmt.Sprintf("Unknown type %x (%d)", messageType, messageType))
 	}
+
+	return err
 }
 
-func ParsePerformanceSysex(sysex []byte, memory *PatchMemory, bank uint8, location uint8, name []byte) {
+func ParsePerformanceSysex(sysex Sysex, memory *PatchMemory, bank uint8, location uint8, name []byte) error {
 	printableName			:= fmt.Sprintf("%-16s", strings.TrimRight(string(name), "\x00"))
 
 	version 				:= float64(uint16(sysex[VersionOffset]) << 8 + uint16(sysex[VersionOffset + 1])) / 100.0
-	performanceSysex 		:= sysex[PatchDataOffset:len(sysex) - 1] // strip trailing F7
-	performanceBitstream 	:= decodeSysexToBitstream(performanceSysex)
+	performanceBitstream 	:= sysex.decodedBitstream()
 
 	if !checksumValid(performanceBitstream) {
-		fmt.Printf("Found INVALID performance: (%v:%03d) %q v%1.2f\n", bank, location, printableName, version)
-		return
+		return errors.New(fmt.Sprintf("Performance data invalid: (%v:%03d) %q v%1.2f\n", bank, location, printableName, version))
 	}
 
 	fmt.Printf("Found Performance: (%v:%03d) %-16.16q v%1.2f\n", bank, location, printableName, version)
+
+	return nil
 }
 
-func ParseProgramSysex(sysex []byte, memory *PatchMemory, bank uint8, location uint8, name []byte) {
+func ParseProgramSysex(sysex Sysex, memory *PatchMemory, bank uint8, location uint8, name []byte) error {
 	printableName		:= fmt.Sprintf("%-16s", strings.TrimRight(string(name), "\x00"))
 
 	version 			:= float64(uint16(sysex[VersionOffset]) << 8 + uint16(sysex[VersionOffset + 1])) / 100.0
-	programSysex 		:= sysex[PatchDataOffset:len(sysex) - 1] // strip trailing F7
-	programBitstream 	:= decodeSysexToBitstream(programSysex)
+	programBitstream 	:= sysex.decodedBitstream()
 
 	if !checksumValid(programBitstream) {
-		fmt.Printf("Found INVALID program: (%v:%03d) %q v%1.2f\n", bank, location, printableName, version)
-		return
+		return errors.New(fmt.Sprintf("Found INVALID program: (%v:%03d) %q v%1.2f\n", bank, location, printableName, version))
 	}
 
 	fmt.Printf("Found Program: (%v:%03d) %-16.16q v%1.2f\n", bank, location, printableName, version)
+	return nil
 }
 
-func decodeSysexToBitstream(payload []byte) []byte {
+func (sysex Sysex) decodedBitstream() []byte {
 	// MIDI 8-bit to bitstream decoding
 	// Every byte of the MIDI stream is actually only 7 bits of the payload bitstream
 	// so we need to drop a bit every byte and re-concatenate the bits
-	
-	buf    := bytes.NewBuffer(nil)
-	reader := bitstream.NewReader(strings.NewReader(string(payload)))
-	writer := bitstream.NewWriter(buf)
-	i      := 0
+	payload := sysex[PatchDataOffset:]
+	buf    	:= bytes.NewBuffer(nil)
+	reader 	:= bitstream.NewReader(strings.NewReader(string(payload)))
+	writer 	:= bitstream.NewWriter(buf)
+	i      	:= 0
 
 	for {
 		bit, err := reader.ReadBit()

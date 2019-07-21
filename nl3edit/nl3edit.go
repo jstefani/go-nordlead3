@@ -14,11 +14,11 @@ const (
 )
 
 
-func parseSysex(file *os.File, memory *nordlead3.PatchMemory) (int, error) {
+func parseSysexFile(file *os.File, memory *nordlead3.PatchMemory) (int, int, error) {
 	defer file.Close()
 	// returnChan := make(chan *nordlead3.NL3PatchMemory)
 	// nl3PatchMemory := new(nordlead3.NL3PatchMemory)
-	totalFound := 0
+	validFound, invalidFound := 0, 0
 	reader := bufio.NewReader(file)
 
 	// Read each sysex entity at a time
@@ -38,34 +38,42 @@ func parseSysex(file *os.File, memory *nordlead3.PatchMemory) (int, error) {
 	// 5. Pass the entire slug off to the appropriate parser for insertion into the patch memory model.
 	// 6. Loop.
 
-	// scan until we see an F0, we hit EOF, or an error occurs. 
+	
 	fmt.Println("Beginning parsing.")
 
 	for {
+		// scan until we see an F0, we hit EOF, or an error occurs. 
 		_, err := reader.ReadBytes(SYSEX_START)
 		if err != nil {
 			if err == io.EOF {
 				break
 			} else {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 
+		// Read the sysex header to see if it's data we care about
 		header, _ := reader.Peek(3)
-		header[1] = 0x00
+		header[1] = 0x00 // We don't care about the destination address
+
+		// 0x33 = Clavia, 0x00 = dest. addr blanked above, 0x09 = NL3 sysex model ID
 		if string(header) == string([]byte{0x33, 0x00, 0x09}) {
-			reader.UnreadByte()
 			programSysex, err := reader.ReadBytes(SYSEX_END)
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 
-			nordlead3.ParseSysex(programSysex, memory)
-			totalFound++
+			// nordlead3.ParseSysex(programSysex[:len(programSysex) - 1], memory) // strip the trailing F7
+			err = nordlead3.ParseSysex(nordlead3.Sysex(programSysex), memory)
+			if err == nil {
+				validFound++
+			} else {
+				invalidFound++
+			}
 		} 
 	}
 	fmt.Println("Finished parsing.")
-	return totalFound, nil
+	return validFound, invalidFound, nil
 }
 
 func printSummaryInfo(*nordlead3.PatchMemory) {
@@ -89,9 +97,9 @@ func main() {
 
 	memory := new(nordlead3.PatchMemory)
 
-	totalFound, err := parseSysex(file, memory)
+	validFound, invalidFound, err := parseSysexFile(file, memory)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Found %v valid SysEx entries.", totalFound)
+	fmt.Printf("Found %v valid SysEx entries (%v invalid).", validFound, invalidFound)
 }
