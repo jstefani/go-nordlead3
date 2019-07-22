@@ -83,5 +83,6 @@ func main() {
 	}
 	fmt.Printf("Found %v valid SysEx entries (%v invalid).", validFound, invalidFound)
 
-	fmt.Printf(memory.DumpPrograms())
+	fmt.Printf(memory.PrintPerformances(true))
+	fmt.Printf(memory.PrintPrograms(true))
 }

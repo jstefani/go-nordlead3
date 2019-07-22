@@ -211,20 +211,20 @@ func (memory *PatchMemory) LoadProgramFromSysex(sysex *Sysex) {
 	}
 }
 
-func (memory *PatchMemory) DumpPrograms() string {
+func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 	var result []string
 
 	result = append(result, "\n***** PROGRAMS ******\n")
 	for bank, contents := range memory.programs {
 		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 		result = append(result, bank_header)
-		result = append(result, contents.String())
+		result = append(result, contents.PrintSummary(omitBlank))
 	}
 
 	return strings.Join(result, "\n")
 }
 
-func (memory *PatchMemory) DumpPerformances() string {
+func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 	var result []string
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
@@ -232,7 +232,7 @@ func (memory *PatchMemory) DumpPerformances() string {
 	for bank, contents := range memory.performances {
 		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 		result = append(result, bank_header)
-		result = append(result, contents.String())
+		result = append(result, contents.PrintSummary(omitBlank))
 	}
 
 	return strings.Join(result, "\n")
@@ -243,17 +243,15 @@ type ProgramBank struct {
 	programs [128]*ProgramLocation
 }
 
-func (bank *ProgramBank) String() string {
+func (bank *ProgramBank) PrintSummary(omitBlank bool) string {
 	var result []string
-	var strProgram string
 
 	for location, program := range bank.programs {
-		if program == nil {
-			strProgram = fmt.Sprintf("   %3d : %+-16.16q", location, program.PrintableName())
-		} else {
-			strProgram = fmt.Sprintf("   %3d : %+-16.16q (%1.2f)", location, program.PrintableName(), program.Version)
+		if program != nil {
+			result = append(result, fmt.Sprintf("   %3d : %+-16.16q (%1.2f)", location, program.PrintableName(), program.Version))
+		} else if !omitBlank {
+			result = append(result, fmt.Sprintf("   %3d : %+-16.16q", location, program.PrintableName()))
 		}
-		result = append(result, strProgram)
 	}
 
 	return strings.Join(result, "\n")
@@ -264,18 +262,15 @@ type PerformanceBank struct {
 	performances [128]*PerformanceLocation
 }
 
-func (bank *PerformanceBank) String() string {
+func (bank *PerformanceBank) PrintSummary(omitBlank bool) string {
 	var result []string
-	var strPerf string
 
 	for location, performance := range bank.performances {
-		if performance == nil {
-			strPerf = fmt.Sprintf("   %3d : %16.16q", location, performance.PrintableName())
-		} else {
-			strPerf = fmt.Sprintf("   %3d : %16.16q (%1.2f)", location, performance.PrintableName(), performance.Version)
+		if performance != nil {
+			result = append(result, fmt.Sprintf("   %3d : %16.16q (%1.2f)", location, performance.PrintableName(), performance.Version))
+		} else if !omitBlank {
+			result = append(result, fmt.Sprintf("   %3d : %16.16q", location, performance.PrintableName()))
 		}
-
-		result = append(result, strPerf)
 	}
 
 	return strings.Join(result, "\n")
@@ -549,60 +544,95 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 	err := (error)(nil)
 
 	for i := 0; i < rt.NumField(); i++ {
-		sf := rt.Field(i)
-		rf := rv.Field(i)
-
-		// fmt.Printf("Setting %q", sf.Name)
+		sf := rt.Field(i) // Type of the StructField (for reading tags)
+		rf := rv.Field(i) // Value of the struct field (for setting value)
 
 		if strLen, ok := sf.Tag.Lookup("len"); ok {
-			len, _ := strconv.Atoi(strLen)
-			if len < 64 { // handling a bool or various length integer/uint
-				bits, err := reader.ReadBits(len)
-				if err != nil {
-					if err == io.EOF {
-						// fmt.Println("Reached EOF")
-						break
-					} else {
-						return errors.New(fmt.Sprintf("GetBit returned error err %v", err.Error()))
-					}
-				}
-				// fmt.Printf(" to %#x\n", bits)
+			numBitsToRead, _ := strconv.Atoi(strLen)
+			switch rf.Kind() {
+			case reflect.Int:
+				err = readInt(rf, reader, numBitsToRead)
+			case reflect.Uint:
+				err = readUint(rf, reader, numBitsToRead)
+			case reflect.Bool:
+				err = readBool(rf, reader)
+			case reflect.Array:
+				size := rf.Len()
 
-				switch rf.Kind() {
-				case reflect.Int:
-					rf.SetInt(int64(bits))
-				case reflect.Uint:
-					rf.SetUint(bits)
-				case reflect.Bool:
-					rf.SetBool(bits == 1)
-				case reflect.Array:
-					rf.Set
-				default:
-					return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
-				}
-			} else { // we're handling a sub-struct
-				lenInBytes := len / 8
-				buf := bytes.NewBuffer(nil)
-				writer := bitstream.NewWriter(buf)
-
-				for i := 0; i < lenInBytes; i++ {
-					byteRead, err := reader.ReadByte()
+				for i := 0; i < size; i++ {
+					rfi := rf.Index(i)
+					err = readUint(rfi, reader, numBitsToRead)
 					if err != nil {
 						break
 					}
-					writer.WriteByte(byteRead)
 				}
-				subData := buf.Bytes()
-
-				newSub := reflect.New(sf.Type)
-				// fmt.Printf("creating and populating a %q with %q. Got:\n%x\n", sf.Type, newSub.Type(), subData)
-				_ = populateReflectedStructFromBitstream(newSub.Elem().Type(), newSub.Elem(), subData)
-				rf.Set(newSub.Elem())
+			case reflect.Struct:
+				bytes, err := readUnaligned(reader, numBitsToRead)
+				if err == nil {
+					newStruct := reflect.New(sf.Type)
+					// fmt.Printf("creating and populating a %q with %q. Got:\n%x\n", sf.Type, newSub.Type(), subData)
+					_ = populateReflectedStructFromBitstream(newStruct.Elem().Type(), newStruct.Elem(), bytes)
+					rf.Set(newStruct.Elem())
+				}
+			default:
+				return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 			}
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
 		}
+
+		if err != nil {
+			break
+		}
 	}
 
 	return err
+}
+
+// Consumes <length> unaligned bits from the bitstream and populates the reflect.Value as a Uint (of any size)
+// Returns an error if one occurred
+func readUint(into reflect.Value, from *bitstream.BitReader, length int) error {
+	bits, err := from.ReadBits(length)
+	if err != nil {
+		return err
+	}
+	into.SetUint(uint64(bits))
+
+	return nil
+}
+
+func readBool(into reflect.Value, from *bitstream.BitReader) error {
+	bits, err := from.ReadBits(1)
+	if err != nil {
+		return err
+	}
+	into.SetBool(bits == 1)
+
+	return nil
+}
+
+func readInt(into reflect.Value, from *bitstream.BitReader, length int) error {
+	bits, err := from.ReadBits(1)
+	if err != nil {
+		return err
+	}
+	into.SetInt(int64(bits))
+
+	return nil
+}
+
+func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	writer := bitstream.NewWriter(buf)
+
+	// Currently we only support lengths in even bytes,
+	// but we still read them unaligned (bitwise) from the reader.
+	for i := 0; i < length/8; i++ {
+		byteRead, err := from.ReadByte()
+		if err != nil {
+			return buf.Bytes(), err
+		}
+		writer.WriteByte(byteRead)
+	}
+	return buf.Bytes(), nil
 }
