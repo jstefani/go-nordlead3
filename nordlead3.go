@@ -21,233 +21,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/dgryski/go-bitstream"
 )
-
-const (
-	ProgramFromSlot       = 0x20
-	ProgramFromMemory     = 0x21
-	PerformanceFromSlot   = 0x28
-	PerformanceFromMemory = 0x29
-)
-
-const (
-	VersionOffset   = 38
-	PatchDataOffset = 40
-)
-
-const (
-	PerformanceBitstreamLength = 859
-	ProgramBitstreamLength     = 191
-)
-
-type Sysex struct {
-	rawSysex         []byte
-	decodedBitstream []byte
-}
-
-func (sysex *Sysex) bank() uint8 {
-	return sysex.rawSysex[4]
-}
-
-func (sysex *Sysex) decodeBitstream() {
-	payload := sysex.rawSysex[PatchDataOffset:]
-	sysex.decodedBitstream = unpackSysex(payload)
-}
-
-func (sysex *Sysex) location() uint8 {
-	return sysex.rawSysex[5]
-}
-
-func (sysex *Sysex) messageType() uint8 {
-	return sysex.rawSysex[3]
-}
-
-func (sysex *Sysex) name() []byte {
-	return sysex.rawSysex[6:22]
-}
-
-func (sysex *Sysex) nameAsArray() [16]byte {
-	var name [16]byte
-	for i, char := range sysex.name() {
-		name[i] = char
-	}
-	return name
-}
-
-func (sysex *Sysex) printableName() string {
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(sysex.name()), "\x00"))
-}
-
-func (sysex *Sysex) printableType() string {
-	switch sysex.messageType() {
-	case ProgramFromSlot, ProgramFromMemory:
-		return "Program"
-	case PerformanceFromSlot, PerformanceFromMemory:
-		return "Performance"
-	default:
-		return "Unknown"
-	}
-}
-
-func (sysex *Sysex) valid() (bool, error) {
-	var errStrs []string
-
-	// Verify message type and expected length
-	switch sysex.messageType() {
-	case ProgramFromSlot, ProgramFromMemory:
-		if len(sysex.decodedBitstream) != ProgramBitstreamLength {
-			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName()))
-		}
-	case PerformanceFromSlot, PerformanceFromMemory:
-		if len(sysex.decodedBitstream) != PerformanceBitstreamLength {
-			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName()))
-		}
-	default:
-		errStrs = append(errStrs, fmt.Sprintf("Unknown type %x (%d)", sysex.messageType(), sysex.messageType()))
-	}
-
-	// Compute and validate 8-bit checksum
-	checksum := sysex.decodedBitstream[len(sysex.decodedBitstream)-1]
-	payload := sysex.decodedBitstream[:len(sysex.decodedBitstream)-1]
-	calculatedChecksum := checksum8(payload)
-	if checksum != calculatedChecksum {
-		errStrs = append(errStrs, fmt.Sprintf("Checksum mismatch parsing %s (%v:%03d %q): expected %x, got %x", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), checksum, calculatedChecksum))
-	}
-
-	// Handle return values
-	if len(errStrs) == 0 {
-		return true, nil
-	} else {
-		return false, errors.New(strings.Join(errStrs, " "))
-	}
-}
-
-func (sysex *Sysex) version() float64 {
-	return float64(uint16(sysex.rawSysex[VersionOffset])<<8+uint16(sysex.rawSysex[VersionOffset+1])) / 100.0
-}
-
-// PatchMemory holds the entire internal structure of the patch memory, including locations, names, and patch contents.
-// The main object responsible for organizing programs and performances.
-
-type PatchMemory struct {
-	Programs     [8]ProgramBank
-	Performances [2]PerformanceBank
-}
-
-// Dumps a program as sysex in NL3 format
-func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
-	buffer := bytes.NewBuffer(nil)
-	programLocation := memory.Programs[bank].Programs[location]
-	program := programLocation.Program
-
-	// assemble sysex prelude
-	buffer.WriteString(string([]byte{0xF0, 0x33, 0x7F, 0x09, 0x21, bank, location}))
-	for i := 0; i < 16; i++ {
-		currByte := programLocation.Name[i]
-		if uint8(currByte) < 128 {
-			buffer.WriteByte(currByte)
-		} else {
-			panic("Sysex values cannot exceed 127!")
-		}
-	}
-	buffer.Write((*new([16]byte))[:]) // 16 spare 0x00
-
-	// Append version x 100 as uint16
-	versionX100 := uint16(programLocation.Version * 100)
-	buffer.Write([]byte{ byte(versionX100 >> 8), byte(versionX100) })
-
-	// concatenate program data
-	progPayload, err := program.DumpSysex()
-	if err != nil {
-		return nil, err
-	}
-	buffer.Write(*progPayload)
-
-	// finally, bang on the trailing 0xF7
-	buffer.WriteByte(0xF7)
-
-	// grab the buffer
-	sysex := buffer.Bytes()
-
-	return &sysex, nil
-}
-
-// // Dumps a performance as sysex in NL3 format
-// func (memory *PatchMemory) DumpPerformance(bank, location int) (*[]byte, error) {
-
-// }
-
-func (memory *PatchMemory) LoadFromSysex(sysex *Sysex) error {
-	err := *new(error)
-
-	valid, err := sysex.valid()
-
-	if valid {
-		switch sysex.messageType() {
-		case ProgramFromMemory, ProgramFromSlot:
-			memory.LoadProgramFromSysex(sysex)
-		case PerformanceFromMemory, PerformanceFromSlot:
-			memory.LoadPerformanceFromSysex(sysex)
-		}
-	}
-
-	return err
-}
-
-func (memory *PatchMemory) LoadPerformanceFromSysex(sysex *Sysex) {
-	performance, err := NewPerformanceFromBitstream(sysex.decodedBitstream)
-	if err == nil {
-		perfLocation := PerformanceLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Performance: performance}
-		memory.Performances[sysex.bank()].Performances[sysex.location()] = &perfLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
-	} else {
-		panic(err)
-	}
-}
-
-func (memory *PatchMemory) LoadProgramFromSysex(sysex *Sysex) {
-	program, err := NewProgramFromBitstream(sysex.decodedBitstream)
-	if err == nil {
-		programLocation := ProgramLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Program: program}
-		memory.Programs[sysex.bank()].Programs[sysex.location()] = &programLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
-	} else {
-		panic(err)
-	}
-}
-
-func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
-	var result []string
-
-	result = append(result, "\n***** PROGRAMS ******\n")
-	for bank, contents := range memory.Programs {
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-		result = append(result, bank_header)
-		result = append(result, contents.PrintSummary(omitBlank))
-	}
-
-	return strings.Join(result, "\n")
-}
-
-func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
-	var result []string
-
-	result = append(result, "\n***** PERFORMANCES ******\n")
-
-	for bank, contents := range memory.Performances {
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-		result = append(result, bank_header)
-		result = append(result, contents.PrintSummary(omitBlank))
-	}
-
-	return strings.Join(result, "\n")
-}
 
 type ProgramBank struct {
 	Programs [128]*ProgramLocation
@@ -287,7 +66,7 @@ func (bank *PerformanceBank) PrintSummary(omitBlank bool) string {
 
 type ProgramLocation struct {
 	Name     [16]byte
-	Category uint
+	Category uint8
 	Version  float64
 	Program  *Program
 }
@@ -301,7 +80,7 @@ func (progLoc *ProgramLocation) PrintableName() string {
 
 type PerformanceLocation struct {
 	Name        [16]byte
-	Category    uint
+	Category    uint8
 	Version     float64
 	Performance *Performance
 }
@@ -311,248 +90,6 @@ func (perfLoc *PerformanceLocation) PrintableName() string {
 		return "** Uninitialized"
 	}
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(perfLoc.Name[:]), "\x00"))
-}
-
-type Program struct {
-	Version_number        uint        `len:"16"`
-	Osc1_shape            uint        `len:"7" min:"0" max:"127"`
-	Osc2_coarse_pitch     uint        `len:"7" min:"0" max:"127"`
-	Osc2_fine_pitch       uint        `len:"7" min:"0" max:"127"`
-	Osc2_shape            uint        `len:"7" min:"0" max:"127"`
-	Oscmix                uint        `len:"7" min:"0" max:"127"`
-	Oscmod                uint        `len:"7" min:"0" max:"127"`
-	Lfo1_rate             uint        `len:"7" min:"0" max:"127"`
-	Lfo1_amount           uint        `len:"7" min:"0" max:"127"`
-	Lfo2_rate             uint        `len:"7" min:"0" max:"127"`
-	Lfo2_amount           uint        `len:"7" min:"0" max:"127"`
-	Amp_env_attack        uint        `len:"7" min:"0" max:"127"`
-	Amp_env_decay         uint        `len:"7" min:"0" max:"127"`
-	Amp_env_sustain       uint        `len:"7" min:"0" max:"127"`
-	Amp_env_release       uint        `len:"7" min:"0" max:"127"`
-	Output_level          uint        `len:"7" min:"0" max:"127"`
-	Filt_env_attack       uint        `len:"7" min:"0" max:"127"`
-	Filt_env_decay        uint        `len:"7" min:"0" max:"127"`
-	Filt_env_sustain      uint        `len:"7" min:"0" max:"127"`
-	Filt_env_release      uint        `len:"7" min:"0" max:"127"`
-	Mod_env_attack        uint        `len:"7" min:"0" max:"127"`
-	Mod_env_decay_release uint        `len:"7" min:"0" max:"127"`
-	Mod_env_amount        uint        `len:"7" min:"0" max:"127"`
-	Filt_env_amount       uint        `len:"7" min:"0" max:"127"`
-	Filt_frequency1       uint        `len:"7" min:"0" max:"127"`
-	Filt_resonance        uint        `len:"7" min:"0" max:"127"`
-	Filt_frequency2       uint        `len:"7" min:"0" max:"127"`
-	Unison_amount         uint        `len:"7" min:"0" max:"127"`
-	Filt_dist_amount      uint        `len:"7" min:"0" max:"127"`
-	Osc1_sync_tune        uint        `len:"7" min:"0" max:"127"`
-	Osc2_sync_tune        uint        `len:"7" min:"0" max:"127"`
-	Osc1_noise_seed       uint        `len:"7" min:"0" max:"127"`
-	Osc2_noise_seed       uint        `len:"7" min:"0" max:"127"`
-	Osc1_modulator_amount uint        `len:"7" min:"0" max:"127"`
-	Osc2_modulator_amount uint        `len:"7" min:"0" max:"127"`
-	Osc2_carrier_pitch    uint        `len:"7" min:"0" max:"127"`
-	Osc2_noise_type       uint        `len:"7" min:"0" max:"127"`
-	Osc2_modulator_pitch  uint        `len:"7" min:"0" max:"127"`
-	Osc2_noise_frequency  uint        `len:"7" min:"0" max:"127"`
-	Spare1                uint        `len:"8" min:"0" max:"255"`
-	Spare2                uint        `len:"8" min:"0" max:"255"`
-	Glide_rate            uint        `len:"7" min:"0" max:"127"`
-	Arpeggio_rate         uint        `len:"7" min:"0" max:"127"`
-	Vibrato_rate          uint        `len:"7" min:"0" max:"127"`
-	Vibrato_amount        uint        `len:"7" min:"0" max:"127"`
-	Arpeggio_sync_divisor uint        `len:"7" min:"0" max:"127"`
-	Lfo1_sync_divisor     uint        `len:"7" min:"0" max:"127"`
-	Lfo2_sync_divisor     uint        `len:"7" min:"0" max:"127"`
-	Transpose             uint        `len:"7" min:"0" max:"127"`
-	Spare3                uint        `len:"8" min:"0" max:"255"`
-	Spare4                uint        `len:"8" min:"0" max:"255"`
-	Osc1_waveform         uint        `len:"3" min:"0" max:"5"`
-	Osc1_sync             bool        `len:"1" min:"0" max:"1"`
-	Osc2_waveform         uint        `len:"3" min:"0" max:"5"`
-	Osc2_sync             bool        `len:"1" min:"0" max:"1"`
-	Osc2_kbt              bool        `len:"1" min:"0" max:"1 O"`
-	Osc2_partial          bool        `len:"1" min:"0" max:"1 O"`
-	Oscmod_type           uint        `len:"3" min:"0" max:"5"`
-	Lfo1_waveform         uint        `len:"3" min:"0" max:"5"`
-	Lfo1_destination      uint        `len:"4" min:"0" max:"11"`
-	Lfo1_env_kbs          uint        `len:"2" min:"0" max:"2"`
-	Lfo1_mono             bool        `len:"1"`
-	Lfo1_invert           bool        `len:"1"`
-	Lfo2_waveform         uint        `len:"3" min:"0" max:"5"`
-	Lfo2_destination      uint        `len:"4" min:"0" max:"11"`
-	Lfo2_env_kbs          uint        `len:"2" min:"0" max:"2"`
-	Lfo2_mono             bool        `len:"1"`
-	Lfo2_invert           bool        `len:"1"`
-	Mod_env_invert        bool        `len:"1"`
-	Mod_env_destination   uint        `len:"4" min:"0" max:"11"`
-	Mod_env_mode          bool        `len:"1"`
-	Mod_env_repeat        bool        `len:"1"`
-	Filt1_type            uint        `len:"3" min:"0" max:"5"`
-	Filt1_slope           uint        `len:"2" min:"0" max:"2"`
-	Filt_env_velocity     bool        `len:"1"`
-	Filt1_kbt             bool        `len:"1"`
-	Filt_env_invert       bool        `len:"1"`
-	Amp_env_exp_attack    bool        `len:"1"`
-	Mod_env_exp_attack    bool        `len:"1"`
-	Filt_env_exp_attack   bool        `len:"1"`
-	Filt_mode             bool        `len:"1"`
-	Filt2_env             bool        `len:"1"`
-	Filt2_type            uint        `len:"3" min:"0" max:"5"`
-	Filt_bypass           bool        `len:"1"`
-	Lfo1_clocksync        bool        `len:"1"`
-	Lfo2_clocksync        bool        `len:"1"`
-	Arpeggiator_clocksync bool        `len:"1"`
-	Oscmix_noise          bool        `len:"1"`
-	Glide_mode            uint        `len:"2" min:"0" max:”2"`
-	Vibrato_source        uint        `len:"2" min:"0" max:"2"`
-	Mono_mode             bool        `len:"1"`
-	Arpeggio_run          bool        `len:"1"`
-	Spare5                uint        `len:"8" min:"0" max:"255"`
-	Unison_mode           bool        `len:"1"`
-	Octave_shift          uint        `len:"3" min:"0" max:"4"`
-	Chord_mem_mode        bool        `len:"1"`
-	Arpeggio_mode         uint        `len:"3" min:"0" max:”3"`
-	Arpeggio_range        uint        `len:"3" min:"0" max:"3"`
-	Arpeggio_kbd_sync     bool        `len:"1"`
-	Spare6                uint        `len:"8" min:"0" max:"255"`
-	Spare7                bool        `len:"1"`
-	Legato_mode           bool        `len:"1"`
-	Mono_allocation_mode  uint        `len:"2" min:"0" max:"2"`
-	Wheel_morph_params    MorphParams `len:"208"`
-	A_touch_morph_params  MorphParams `len:"208"`
-	Velocity_morph_params MorphParams `len:"208"`
-	Kbd_morph_params      MorphParams `len:"208"`
-	Chord_mem_count       uint        `len:"5" min:"0" max:"23"`
-	Chord_mem_position    uint        `len:"8" min:"0" max:"255"`
-	Spare8                uint        `len:"8"`
-	Checksum              uint        `len:"8" min:"0" max:"255"`
-}
-
-type MorphParams struct {
-	Lfo1_rate             int `len:"8" min:"-128" max:"127"`
-	Lfo1_amount           int `len:"8" min:"-128" max:"127"`
-	Lfo2_rate             int `len:"8" min:"-128" max:"127"`
-	Lfo2_amount           int `len:"8" min:"-128" max:"127"`
-	Mod_env_attack        int `len:"8" min:"-128" max:"127"`
-	Mod_env_decay_release int `len:"8" min:"-128" max:"127"`
-	Mod_env_amount        int `len:"8" min:"-128" max:"127"`
-	Osc2_fine_pitch       int `len:"8" min:"-128" max:"127"`
-	Osc2_coarse_pitch     int `len:"8" min:"-128" max:"127"`
-	Oscmod                int `len:"8" min:"-128" max:"127"`
-	Oscmix                int `len:"8" min:"-128" max:"127"`
-	Osc1_shape            int `len:"8" min:"-128" max:"127"`
-	Osc2_shape            int `len:"8" min:"-128" max:"127"`
-	Amp_env_attack        int `len:"8" min:"-128" max:"127"`
-	Amp_env_decay         int `len:"8" min:"-128" max:"127"`
-	Amp_env_sustain       int `len:"8" min:"-128" max:"127"`
-	Amp_env_release       int `len:"8" min:"-128" max:"127"`
-	Filt_env_attack       int `len:"8" min:"-128" max:"127"`
-	Filt_env_decay        int `len:"8" min:"-128" max:"127"`
-	Filt_env_sustain      int `len:"8" min:"-128" max:"127"`
-	Filt_env_release      int `len:"8" min:"-128" max:"127"`
-	Filt_env_amount       int `len:"8" min:"-128" max:"127"`
-	Filt_frequency1       int `len:"8" min:"-128" max:"127"`
-	Filt_frequency2       int `len:"8" min:"-128" max:"127"`
-	Filt_resonance        int `len:"8" min:"-128" max:"127"`
-	Output_level          int `len:"8" min:"-128" max:"127"`
-}
-
-func (program *Program) DumpSysex() (*[]byte, error) {
-	if program == nil {
-		return nil, errors.New("Cannot dump a blank program - no init values set!")
-	}
-
-	payload, err := bitstreamFromStruct(program)
-	if err != nil {
-		return nil, err
-	}
-
-	payload = append(payload, checksum8(payload))
-	packedPayload := packSysex(payload)
-
-	return &packedPayload, nil
-}
-
-type Performance struct {
-	Version_number       uint     `len:"16"`                  // Decimal OS version number (# x	100	)
-	Enabled_slots        uint     `len:"8" min:"0" max:"127"` // 0-15
-	Focused_slot         uint     `len:"8" min:"0" max:"127"` // 0-3
-	Midi_channel_slot_a  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
-	Midi_channel_slot_b  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
-	Midi_channel_slot_c  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
-	Midi_channel_slot_d  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
-	Audio_channel_slot_a uint     `len:"8" min:"0" max:"127"` // 0-5
-	Audio_channel_slot_b uint     `len:"8" min:"0" max:"127"` // 0-5
-	Audio_channel_slot_c uint     `len:"8" min:"0" max:"127"` // 0-5
-	Audio_channel_slot_d uint     `len:"8" min:"0" max:"127"` // 0-5
-	Splitpoint_key       uint     `len:"8" min:"0" max:"127"` // 0-127
-	Splitpoint           bool     `len:"8" min:"0" max:"127"` // 0-1 Off or On
-	Sustain_enable       uint     `len:"8" min:"0" max:"127"` // 0-15
-	Pitchbend_enable     uint     `len:"8" min:"0" max:"127"` // 0-15
-	Modwheel_enable      uint     `len:"8" min:"0" max:"127"` // 0-15
-	Bank_slot_a          uint     `len:"3" min:"0" max:"7"`
-	Program_slot_a       uint     `len:"8" min:"0" max:"127"`
-	Bank_slot_b          uint     `len:"3" min:"0" max:"7"`
-	Program_slot_b       uint     `len:"8" min:"0" max:"127"`
-	Bank_slot_c          uint     `len:"3" min:"0" max:"7"`
-	Program_slot_c       uint     `len:"8" min:"0" max:"127"`
-	Bank_slot_d          uint     `len:"3" min:"0" max:"7"`
-	Program_slot_d       uint     `len:"8" min:"0" max:"127"`
-	Morph3_source_select bool     `len:"8"` // 0-1 Control pedal or aftertouch
-	Midi_clock_keysync   bool     `len:"8"`
-	Keyboard_hold        bool     `len:"8"`
-	Spare3               uint     `len:"8"`
-	Spare4               uint     `len:"8"`
-	Spare5               uint     `len:"8"`
-	Spare6               uint     `len:"8"`
-	Spare7               uint     `len:"8"`
-	Spare8               uint     `len:"8"`
-	Spare9               uint     `len:"8"`
-	Spare10              uint     `len:"8"`
-	Spare11              uint     `len:"8"`
-	Spare12              uint     `len:"8"`
-	Midi_clock_rate      uint     `len:"8" min:"0" max:"210"` // 0-210
-	Bend_range_up        uint     `len:"8" min:"0" max:"24"`  // 0-24
-	Bend_range_down      uint     `len:"8" min:"0" max:"24"`  // 0-24
-	Patchname_slot_a     [16]byte `len:"7"`                   // Read as 16 chars of 7 bits, so read 7 bits into each of 16 bytes
-	Patchname_slot_b     [16]byte `len:"7"`
-	Patchname_slot_c     [16]byte `len:"7"`
-	Patchname_slot_d     [16]byte `len:"7"`
-	Patch_data_a         Program  `len:"191"`
-	Patch_data_b         Program  `len:"191"`
-	Patch_data_c         Program  `len:"191"`
-	Patch_data_d         Program  `len:"191"`
-	Checksum             uint     `len:"8"`
-}
-
-func ParseSysex(rawSysex []byte) (*Sysex, error) {
-	var sysex Sysex
-
-	// Strip leading F0 and trailing F7, if present
-	if rawSysex[0] == 0xF0 {
-		rawSysex = rawSysex[1:]
-	}
-	if rawSysex[len(rawSysex)-1] == 0xF7 {
-		rawSysex = rawSysex[:len(rawSysex)-1]
-	}
-
-	sysex = Sysex{rawSysex: rawSysex}
-	sysex.decodeBitstream()
-
-	_, err := sysex.valid()
-
-	return &sysex, err
-}
-
-func NewProgramFromBitstream(data []byte) (*Program, error) {
-	program := new(Program)
-	err := populateStructFromBitstream(program, data)
-	return program, err
-}
-
-func NewPerformanceFromBitstream(data []byte) (*Performance, error) {
-	performance := new(Performance)
-	err := populateStructFromBitstream(performance, data)
-	return performance, err
 }
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
@@ -636,11 +173,11 @@ func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, 
 			numBitsToWrite, _ := strconv.Atoi(strLen)
 			switch rf.Kind() {
 			case reflect.Int:
-				err = writer.WriteBits(uint64(rv.Int()), numBitsToWrite)
+				err = writer.WriteBits(uint64(rf.Int()), numBitsToWrite)
 			case reflect.Uint:
-				err = writer.WriteBits(rv.Uint(), numBitsToWrite)
+				err = writer.WriteBits(rf.Uint(), numBitsToWrite)
 			case reflect.Bool:
-				err = writer.WriteBit(bitstream.Bit(rv.Bool()))
+				err = writer.WriteBit(bitstream.Bit(rf.Bool()))
 			case reflect.Array:
 				size := rf.Len()
 
@@ -652,7 +189,7 @@ func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, 
 					}
 				}
 			case reflect.Struct:
-				err = writeBitstreamFromReflection(writer, rv.Type(), rv.Elem())
+				err = writeBitstreamFromReflection(writer, rf.Type(), rf)
 				if err != nil {
 					break
 				}
@@ -667,7 +204,6 @@ func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, 
 			break
 		}
 	}
-
 	return err
 }
 
@@ -717,57 +253,6 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 		writer.WriteByte(byteRead)
 	}
 	return buf.Bytes(), nil
-}
-
-// MIDI 8-bit to bitstream decoding
-// Every byte of the MIDI stream is actually only 7 bits of the payload bitstream
-// so we need to drop a bit every byte and re-concatenate the bits
-func unpackSysex(payload []byte) []byte {
-	buf := bytes.NewBuffer(nil)
-	reader := bitstream.NewReader(bytes.NewReader(payload))
-	writer := bitstream.NewWriter(buf)
-	i := 0
-
-	for {
-		bit, err := reader.ReadBit()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			panic(fmt.Sprintf("GetBit returned error err %v", err.Error()))
-		}
-		if i%8 == 0 {
-			// skip
-		} else {
-			err = writer.WriteBit(bit)
-			if err == nil {
-				// skip
-			} else {
-				panic(fmt.Sprintf("Error writing bit: %v", err.Error()))
-			}
-		}
-		i++
-	}
-
-	return buf.Bytes()
-}
-
-// Encodes 8-bit binary data as bytes with 7 bits of data
-// in the LSB and the MSB set to 0. For transmission over sysex.
-func packSysex(payload []byte) []byte {
-	buf := bytes.NewBuffer(nil)
-	reader := bitstream.NewReader(bytes.NewReader(payload))
-	writer := bitstream.NewWriter(buf)
-
-	for {
-		bits, err := reader.ReadBits(7)
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-		writer.WriteBits(bits, 8)
-	}
-
-	return buf.Bytes()
 }
 
 func checksum8(payload []byte) byte {
