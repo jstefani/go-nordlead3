@@ -1,5 +1,22 @@
 package nordlead3
 
+/*
+TODO:
+
+ - Handle reading the byte arrays for the patch names in performances
+ - Add output serializers (back to Sysex) and test roundtrip read -> output for equality
+ - Write a bunch of useful tests for the core methods
+ - Try to figure out how categories are implemented
+ - Create useful functions for manipulating memory:
+     - Swap locations
+     - Rename location
+     - Copy from one location to another (destination must be empty)
+     - Delete a location entirely (makes destination empty)
+     - Insert a location (move following locations down until an empty location is hit, or return an error if there's no room)
+     - Fancy stuff: move any subset of locations (e.g. an array of tuples (bank, location)) to a consecutive block of empty destinations (e.g. (bank, location) where the first one goes)
+ - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
+*/
+
 import (
 	"bytes"
 	"errors"
@@ -161,18 +178,37 @@ func (memory *PatchMemory) LoadFromSysex(sysex *Sysex) error {
 	valid, err := sysex.valid()
 
 	if valid {
-		program, err := NewProgramFromBitstream(sysex.decodedBitstream)
-		if err == nil {
-			programLocation := ProgramLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Program: program}
-			memory.programs[sysex.bank()].programs[sysex.location()] = &programLocation
-			fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
-		} else {
-			panic(err)
+		switch sysex.messageType() {
+		case ProgramFromMemory, ProgramFromSlot:
+			memory.LoadProgramFromSysex(sysex)
+		case PerformanceFromMemory, PerformanceFromSlot:
+			memory.LoadPerformanceFromSysex(sysex)
 		}
-
 	}
 
 	return err
+}
+
+func (memory *PatchMemory) LoadPerformanceFromSysex(sysex *Sysex) {
+	performance, err := NewPerformanceFromBitstream(sysex.decodedBitstream)
+	if err == nil {
+		perfLocation := PerformanceLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Performance: performance}
+		memory.performances[sysex.bank()].performances[sysex.location()] = &perfLocation
+		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
+	} else {
+		panic(err)
+	}
+}
+
+func (memory *PatchMemory) LoadProgramFromSysex(sysex *Sysex) {
+	program, err := NewProgramFromBitstream(sysex.decodedBitstream)
+	if err == nil {
+		programLocation := ProgramLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Program: program}
+		memory.programs[sysex.bank()].programs[sysex.location()] = &programLocation
+		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
+	} else {
+		panic(err)
+	}
 }
 
 func (memory *PatchMemory) DumpPrograms() string {
@@ -488,13 +524,20 @@ func ParseSysex(rawSysex []byte) (*Sysex, error) {
 }
 
 func NewProgramFromBitstream(data []byte) (*Program, error) {
-	// Use reflection to get each field in the struct and it's length, then read that into it
 	program := new(Program)
 	err := populateStructFromBitstream(program, data)
 	return program, err
 }
 
+func NewPerformanceFromBitstream(data []byte) (*Performance, error) {
+	performance := new(Performance)
+	err := populateStructFromBitstream(performance, data)
+	return performance, err
+}
+
 func populateStructFromBitstream(i interface{}, data []byte) error {
+	// Use reflection to get each field in the struct and it's length, then read that into it
+
 	rt := reflect.TypeOf(i).Elem()
 	rv := reflect.ValueOf(i).Elem()
 
@@ -532,6 +575,8 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 					rf.SetUint(bits)
 				case reflect.Bool:
 					rf.SetBool(bits == 1)
+				case reflect.Array:
+					rf.Set
 				default:
 					return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 				}
