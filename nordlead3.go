@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/dgryski/go-bitstream"
@@ -82,6 +84,14 @@ func (sysex *Sysex) name() []byte {
 	return sysex.rawSysex[6:22]
 }
 
+func (sysex *Sysex) nameAsArray() [16]byte {
+	var name [16]byte
+	for i, char := range sysex.name() {
+		name[i] = char
+	}
+	return name
+}
+
 func (sysex *Sysex) printableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(sysex.name()), "\x00"))
 }
@@ -151,214 +161,311 @@ func (memory *PatchMemory) LoadFromSysex(sysex *Sysex) error {
 	valid, err := sysex.valid()
 
 	if valid {
-		// TODO actually parse the sysex into the right object type and stick in the memory array
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
+		program, err := NewProgramFromBitstream(sysex.decodedBitstream)
+		if err == nil {
+			programLocation := ProgramLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Program: program}
+			memory.programs[sysex.bank()].programs[sysex.location()] = &programLocation
+			fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
+		} else {
+			panic(err)
+		}
+
 	}
 
 	return err
 }
 
+func (memory *PatchMemory) DumpPrograms() string {
+	var result []string
+
+	result = append(result, "\n***** PROGRAMS ******\n")
+	for bank, contents := range memory.programs {
+		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+		result = append(result, bank_header)
+		result = append(result, contents.String())
+	}
+
+	return strings.Join(result, "\n")
+}
+
+func (memory *PatchMemory) DumpPerformances() string {
+	var result []string
+
+	result = append(result, "\n***** PERFORMANCES ******\n")
+
+	for bank, contents := range memory.performances {
+		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+		result = append(result, bank_header)
+		result = append(result, contents.String())
+	}
+
+	return strings.Join(result, "\n")
+}
+
 type ProgramBank struct {
 	id       uint
-	programs [128]Program
+	programs [128]*ProgramLocation
+}
+
+func (bank *ProgramBank) String() string {
+	var result []string
+	var strProgram string
+
+	for location, program := range bank.programs {
+		if program == nil {
+			strProgram = fmt.Sprintf("   %3d : %+-16.16q", location, program.PrintableName())
+		} else {
+			strProgram = fmt.Sprintf("   %3d : %+-16.16q (%1.2f)", location, program.PrintableName(), program.Version)
+		}
+		result = append(result, strProgram)
+	}
+
+	return strings.Join(result, "\n")
 }
 
 type PerformanceBank struct {
 	id           uint
-	performances [128]Performance
+	performances [128]*PerformanceLocation
+}
+
+func (bank *PerformanceBank) String() string {
+	var result []string
+	var strPerf string
+
+	for location, performance := range bank.performances {
+		if performance == nil {
+			strPerf = fmt.Sprintf("   %3d : %16.16q", location, performance.PrintableName())
+		} else {
+			strPerf = fmt.Sprintf("   %3d : %16.16q (%1.2f)", location, performance.PrintableName(), performance.Version)
+		}
+
+		result = append(result, strPerf)
+	}
+
+	return strings.Join(result, "\n")
+}
+
+type ProgramLocation struct {
+	Name     [16]byte
+	Category uint
+	Version  float64
+	Program  *Program
+}
+
+func (progLoc *ProgramLocation) PrintableName() string {
+	if progLoc == nil {
+		return "** Uninitialized"
+	}
+	return fmt.Sprintf("%-16s", strings.TrimRight(string(progLoc.Name[:]), "\x00"))
+}
+
+type PerformanceLocation struct {
+	Name        [16]byte
+	Category    uint
+	Version     float64
+	Performance *Performance
+}
+
+func (perfLoc *PerformanceLocation) PrintableName() string {
+	if perfLoc == nil {
+		return "** Uninitialized"
+	}
+	return fmt.Sprintf("%-16s", strings.TrimRight(string(perfLoc.Name[:]), "\x00"))
 }
 
 type Program struct {
-	version_number        uint16      // Decimal OS version number (# x	100	)
-	osc1_shape            uint8       // 0-127
-	osc2_coarse_pitch     uint8       // 0-127
-	osc2_fine_pitch       uint8       // 0-127
-	osc2_shape            uint8       // 0-127
-	oscmix                uint8       // 0-127
-	oscmod                uint8       // 0-127
-	lfo1_rate             uint8       // 0-127
-	lfo1_amount           uint8       // 0-127
-	lfo2_rate             uint8       // 0-127
-	lfo2_amount           uint8       // 0-127
-	amp_env_attack        uint8       // 0-127
-	amp_env_decay         uint8       // 0-127
-	amp_env_sustain       uint8       // 0-127
-	amp_env_release       uint8       // 0-127
-	output_level          uint8       // 0-127
-	filt_env_attack       uint8       // 0-127
-	filt_env_decay        uint8       // 0-127
-	filt_env_sustain      uint8       // 0-127
-	filt_env_release      uint8       // 0-127
-	mod_env_attack        uint8       // 0-127
-	mod_env_decay_release uint8       // 0-127
-	mod_env_amount        uint8       // 0-127
-	filt_env_amount       uint8       // 0-127
-	filt_frequency1       uint8       // 0-127
-	filt_resonance        uint8       // 0-127
-	filt_frequency2       uint8       // 0-127
-	unison_amount         uint8       // 0-127
-	filt_dist_amount      uint8       // 0-127
-	osc1_sync_tune        uint8       // 0-127
-	osc2_sync_tune        uint8       // 0-127
-	osc1_noise_seed       uint8       // 0-127
-	osc2_noise_seed       uint8       // 0-127
-	osc1_modulator_amount uint8       // 0-127 In Dual Sine mode
-	osc2_modulator_amount uint8       // 0-127 In Dual Sine mode
-	osc2_carrier_pitch    uint8       // 0-127 In Dual Sine mode
-	osc2_noise_type       uint8       // 0-127 LP/BP/HP
-	osc2_modulator_pitch  uint8       // 0-127 In Dual Sine mode
-	osc2_noise_frequency  uint8       // 0-127
-	spare1                uint8       // 0-255
-	spare2                uint8       // 0-255
-	glide_rate            uint8       // 0-127
-	arpeggio_rate         uint8       // 0-127
-	vibrato_rate          uint8       // 0-127
-	vibrato_amount        uint8       // 0-127
-	arpeggio_sync_divisor uint8       // 0-127
-	lfo1_sync_divisor     uint8       // 0-127
-	lfo2_sync_divisor     uint8       // 0-127
-	transpose             uint8       // 0-127
-	spare3                uint8       // 0-255
-	spare4                uint8       // 0-255
-	osc1_waveform         uint8       // 0-5
-	osc1_sync             bool        // 0-1
-	osc2_waveform         uint8       // 0-5
-	osc2_sync             bool        // 0-1
-	osc2_kbt              bool        // 0-1 Off or On
-	osc2_partial          bool        // 0-1 Off or On
-	oscmod_type           uint8       // 0-5
-	lfo1_waveform         uint8       // 0-5
-	lfo1_destination      uint8       // 0-11
-	lfo1_env_kbs          uint8       // 0-2
-	lfo1_mono             bool        // 0-1 Off or On
-	lfo1_invert           bool        // 0-1 Off or On
-	lfo2_waveform         uint8       // 0-5
-	lfo2_destination      uint8       // 0-11
-	lfo2_env_kbs          uint8       // 0-2
-	lfo2_mono             bool        // 0-1 Off or On
-	lfo2_invert           bool        // 0-1 Off or On
-	mod_env_invert        bool        // 0-1 Off or On
-	mod_env_destination   uint8       // 0-11
-	mod_env_mode          bool        // 0-1 Selects Decay (0) or Release (1) mode
-	mod_env_repeat        bool        // 0-1 Off or On
-	filt1_type            uint8       // 0-5
-	filt1_slope           uint8       // 0-2
-	filt_env_velocity     bool        // 0-1 Off or On
-	filt1_kbt             bool        // 0-1 Off or On
-	filt_env_invert       bool        // 0-1 Off or On
-	amp_env_exp_attack    bool        // 0-1 Off or On
-	mod_env_exp_attack    bool        // 0-1 Off or On
-	filt_env_exp_attack   bool        // 0-1 Off or On
-	filt_mode             bool        // 0-1 Selects Single or Dual Filter mode
-	filt2_env             bool        // 0-1 Selects if Filt2 is controlled by Filt_Env
-	filt2_type            uint8       // 0-5
-	filt_bypass           bool        // 0-1 Off or On
-	lfo1_clocksync        bool        // 0-1 Off or On
-	lfo2_clocksync        bool        // 0-1 Off or On
-	arpeggiator_clocksync bool        // 0-1 Off or On
-	oscmix_noise          bool        // 0-1 Off or On
-	glide_mode            uint8       // 0-2 Off, On or Auto
-	vibrato_source        uint8       // 0-2 Off, Wheel or Aftertouch
-	mono_mode             bool        // 0-1 Off or On
-	arpeggio_run          bool        // 0-1 Off or On
-	spare5                uint8       // 0-255
-	unison_mode           bool        // 0-1 Off or On
-	octave_shift          uint8       // 0-4
-	chord_mem_mode        bool        // 0-1 Off or On
-	arpeggio_mode         uint8       // 0-3 Up, Down, Up/down or Random
-	arpeggio_range        uint8       // 0-3
-	arpeggio_kbd_sync     bool        // 0-1 Off or On
-	spare6                uint8       // 0-255
-	spare7                bool        // 0-1 Off or On
-	legato_mode           bool        // 0-1 Off or On
-	mono_allocation_mode  uint8       // 0-2 Off, Hi or Lo
-	wheel_morph_params    MorphParams // 0-127 See ‘Morph parameter list’ below
-	a_touch_morph_params  MorphParams // 0-127 See ‘Morph parameter list’ below
-	velocity_morph_params MorphParams // 0-127 See ‘Morph parameter list’ below
-	kbd_morph_params      MorphParams // 0-127 See ‘Morph parameter list’ below
-	chord_mem_count       uint8       // 0-23	uint8	-24
-	chord_mem_position    uint8       // 0-255	uint8	-24
-	spare8                uint8       // 0-255
-	checksum              uint8       // 0-255
+	Version_number        uint        `len:"16"`
+	Osc1_shape            uint        `len:"7" min:"0" max:"127"`
+	Osc2_coarse_pitch     uint        `len:"7" min:"0" max:"127"`
+	Osc2_fine_pitch       uint        `len:"7" min:"0" max:"127"`
+	Osc2_shape            uint        `len:"7" min:"0" max:"127"`
+	Oscmix                uint        `len:"7" min:"0" max:"127"`
+	Oscmod                uint        `len:"7" min:"0" max:"127"`
+	Lfo1_rate             uint        `len:"7" min:"0" max:"127"`
+	Lfo1_amount           uint        `len:"7" min:"0" max:"127"`
+	Lfo2_rate             uint        `len:"7" min:"0" max:"127"`
+	Lfo2_amount           uint        `len:"7" min:"0" max:"127"`
+	Amp_env_attack        uint        `len:"7" min:"0" max:"127"`
+	Amp_env_decay         uint        `len:"7" min:"0" max:"127"`
+	Amp_env_sustain       uint        `len:"7" min:"0" max:"127"`
+	Amp_env_release       uint        `len:"7" min:"0" max:"127"`
+	Output_level          uint        `len:"7" min:"0" max:"127"`
+	Filt_env_attack       uint        `len:"7" min:"0" max:"127"`
+	Filt_env_decay        uint        `len:"7" min:"0" max:"127"`
+	Filt_env_sustain      uint        `len:"7" min:"0" max:"127"`
+	Filt_env_release      uint        `len:"7" min:"0" max:"127"`
+	Mod_env_attack        uint        `len:"7" min:"0" max:"127"`
+	Mod_env_decay_release uint        `len:"7" min:"0" max:"127"`
+	Mod_env_amount        uint        `len:"7" min:"0" max:"127"`
+	Filt_env_amount       uint        `len:"7" min:"0" max:"127"`
+	Filt_frequency1       uint        `len:"7" min:"0" max:"127"`
+	Filt_resonance        uint        `len:"7" min:"0" max:"127"`
+	Filt_frequency2       uint        `len:"7" min:"0" max:"127"`
+	Unison_amount         uint        `len:"7" min:"0" max:"127"`
+	Filt_dist_amount      uint        `len:"7" min:"0" max:"127"`
+	Osc1_sync_tune        uint        `len:"7" min:"0" max:"127"`
+	Osc2_sync_tune        uint        `len:"7" min:"0" max:"127"`
+	Osc1_noise_seed       uint        `len:"7" min:"0" max:"127"`
+	Osc2_noise_seed       uint        `len:"7" min:"0" max:"127"`
+	Osc1_modulator_amount uint        `len:"7" min:"0" max:"127"`
+	Osc2_modulator_amount uint        `len:"7" min:"0" max:"127"`
+	Osc2_carrier_pitch    uint        `len:"7" min:"0" max:"127"`
+	Osc2_noise_type       uint        `len:"7" min:"0" max:"127"`
+	Osc2_modulator_pitch  uint        `len:"7" min:"0" max:"127"`
+	Osc2_noise_frequency  uint        `len:"7" min:"0" max:"127"`
+	Spare1                uint        `len:"8" min:"0" max:"255"`
+	Spare2                uint        `len:"8" min:"0" max:"255"`
+	Glide_rate            uint        `len:"7" min:"0" max:"127"`
+	Arpeggio_rate         uint        `len:"7" min:"0" max:"127"`
+	Vibrato_rate          uint        `len:"7" min:"0" max:"127"`
+	Vibrato_amount        uint        `len:"7" min:"0" max:"127"`
+	Arpeggio_sync_divisor uint        `len:"7" min:"0" max:"127"`
+	Lfo1_sync_divisor     uint        `len:"7" min:"0" max:"127"`
+	Lfo2_sync_divisor     uint        `len:"7" min:"0" max:"127"`
+	Transpose             uint        `len:"7" min:"0" max:"127"`
+	Spare3                uint        `len:"8" min:"0" max:"255"`
+	Spare4                uint        `len:"8" min:"0" max:"255"`
+	Osc1_waveform         uint        `len:"3" min:"0" max:"5"`
+	Osc1_sync             bool        `len:"1" min:"0" max:"1"`
+	Osc2_waveform         uint        `len:"3" min:"0" max:"5"`
+	Osc2_sync             bool        `len:"1" min:"0" max:"1"`
+	Osc2_kbt              bool        `len:"1" min:"0" max:"1 O"`
+	Osc2_partial          bool        `len:"1" min:"0" max:"1 O"`
+	Oscmod_type           uint        `len:"3" min:"0" max:"5"`
+	Lfo1_waveform         uint        `len:"3" min:"0" max:"5"`
+	Lfo1_destination      uint        `len:"4" min:"0" max:"11"`
+	Lfo1_env_kbs          uint        `len:"2" min:"0" max:"2"`
+	Lfo1_mono             bool        `len:"1"`
+	Lfo1_invert           bool        `len:"1"`
+	Lfo2_waveform         uint        `len:"3" min:"0" max:"5"`
+	Lfo2_destination      uint        `len:"4" min:"0" max:"11"`
+	Lfo2_env_kbs          uint        `len:"2" min:"0" max:"2"`
+	Lfo2_mono             bool        `len:"1"`
+	Lfo2_invert           bool        `len:"1"`
+	Mod_env_invert        bool        `len:"1"`
+	Mod_env_destination   uint        `len:"4" min:"0" max:"11"`
+	Mod_env_mode          bool        `len:"1"`
+	Mod_env_repeat        bool        `len:"1"`
+	Filt1_type            uint        `len:"3" min:"0" max:"5"`
+	Filt1_slope           uint        `len:"2" min:"0" max:"2"`
+	Filt_env_velocity     bool        `len:"1"`
+	Filt1_kbt             bool        `len:"1"`
+	Filt_env_invert       bool        `len:"1"`
+	Amp_env_exp_attack    bool        `len:"1"`
+	Mod_env_exp_attack    bool        `len:"1"`
+	Filt_env_exp_attack   bool        `len:"1"`
+	Filt_mode             bool        `len:"1"`
+	Filt2_env             bool        `len:"1"`
+	Filt2_type            uint        `len:"3" min:"0" max:"5"`
+	Filt_bypass           bool        `len:"1"`
+	Lfo1_clocksync        bool        `len:"1"`
+	Lfo2_clocksync        bool        `len:"1"`
+	Arpeggiator_clocksync bool        `len:"1"`
+	Oscmix_noise          bool        `len:"1"`
+	Glide_mode            uint        `len:"2" min:"0" max:”2"`
+	Vibrato_source        uint        `len:"2" min:"0" max:"2"`
+	Mono_mode             bool        `len:"1"`
+	Arpeggio_run          bool        `len:"1"`
+	Spare5                uint        `len:"8" min:"0" max:"255"`
+	Unison_mode           bool        `len:"1"`
+	Octave_shift          uint        `len:"3" min:"0" max:"4"`
+	Chord_mem_mode        bool        `len:"1"`
+	Arpeggio_mode         uint        `len:"3" min:"0" max:”3"`
+	Arpeggio_range        uint        `len:"3" min:"0" max:"3"`
+	Arpeggio_kbd_sync     bool        `len:"1"`
+	Spare6                uint        `len:"8" min:"0" max:"255"`
+	Spare7                bool        `len:"1"`
+	Legato_mode           bool        `len:"1"`
+	Mono_allocation_mode  uint        `len:"2" min:"0" max:"2"`
+	Wheel_morph_params    MorphParams `len:"208"`
+	A_touch_morph_params  MorphParams `len:"208"`
+	Velocity_morph_params MorphParams `len:"208"`
+	Kbd_morph_params      MorphParams `len:"208"`
+	Chord_mem_count       uint        `len:"5" min:"0" max:"23"`
+	Chord_mem_position    uint        `len:"8" min:"0" max:"255"`
+	Spare8                uint        `len:"8"`
+	Checksum              uint        `len:"8" min:"0" max:"255"`
 }
 
 type MorphParams struct {
-	// Morph Parameter List (all parameters -128 to 127)
-	lfo1_rate             int8
-	lfo1_amount           int8
-	lfo2_rate             int8
-	lfo2_amount           int8
-	mod_env_attack        int8
-	mod_env_decay_release int8
-	mod_env_amount        int8
-	osc2_fine_pitch       int8
-	osc2_coarse_pitch     int8
-	oscmod                int8
-	oscmix                int8
-	osc1_shape            int8
-	osc2_shape            int8
-	amp_env_attack        int8
-	amp_env_decay         int8
-	amp_env_sustain       int8
-	amp_env_release       int8
-	filt_env_attack       int8
-	filt_env_decay        int8
-	filt_env_sustain      int8
-	filt_env_release      int8
-	filt_env_amount       int8
-	filt_frequency1       int8
-	filt_frequency2       int8
-	filt_resonance        int8
-	output_level          int8
+	Lfo1_rate             int `len:"8" min:"-128" max:"127"`
+	Lfo1_amount           int `len:"8" min:"-128" max:"127"`
+	Lfo2_rate             int `len:"8" min:"-128" max:"127"`
+	Lfo2_amount           int `len:"8" min:"-128" max:"127"`
+	Mod_env_attack        int `len:"8" min:"-128" max:"127"`
+	Mod_env_decay_release int `len:"8" min:"-128" max:"127"`
+	Mod_env_amount        int `len:"8" min:"-128" max:"127"`
+	Osc2_fine_pitch       int `len:"8" min:"-128" max:"127"`
+	Osc2_coarse_pitch     int `len:"8" min:"-128" max:"127"`
+	Oscmod                int `len:"8" min:"-128" max:"127"`
+	Oscmix                int `len:"8" min:"-128" max:"127"`
+	Osc1_shape            int `len:"8" min:"-128" max:"127"`
+	Osc2_shape            int `len:"8" min:"-128" max:"127"`
+	Amp_env_attack        int `len:"8" min:"-128" max:"127"`
+	Amp_env_decay         int `len:"8" min:"-128" max:"127"`
+	Amp_env_sustain       int `len:"8" min:"-128" max:"127"`
+	Amp_env_release       int `len:"8" min:"-128" max:"127"`
+	Filt_env_attack       int `len:"8" min:"-128" max:"127"`
+	Filt_env_decay        int `len:"8" min:"-128" max:"127"`
+	Filt_env_sustain      int `len:"8" min:"-128" max:"127"`
+	Filt_env_release      int `len:"8" min:"-128" max:"127"`
+	Filt_env_amount       int `len:"8" min:"-128" max:"127"`
+	Filt_frequency1       int `len:"8" min:"-128" max:"127"`
+	Filt_frequency2       int `len:"8" min:"-128" max:"127"`
+	Filt_resonance        int `len:"8" min:"-128" max:"127"`
+	Output_level          int `len:"8" min:"-128" max:"127"`
 }
 
 type Performance struct {
-	version_number       uint16    // Decimal OS version number (# x	100	)
-	enabled_slots        uint8     // 0-15
-	focused_slot         uint8     // 0-3
-	midi_channel_slot_a  uint8     // 0-16 0 = Off
-	midi_channel_slot_b  uint8     // 0-16 0 = Off
-	midi_channel_slot_c  uint8     // 0-16 0 = Off
-	midi_channel_slot_d  uint8     // 0-16 0 = Off
-	audio_channel_slot_a uint8     // 0-5
-	audio_channel_slot_b uint8     // 0-5
-	audio_channel_slot_c uint8     // 0-5
-	audio_channel_slot_d uint8     // 0-5
-	splitpoint_key       uint8     // 0-127
-	splitpoint           uint8     // 0-1 Off or On
-	sustain_enable       uint8     // 0-15
-	pitchbend_enable     uint8     // 0-15
-	modwheel_enable      uint8     // 0-15
-	bank_slot_a          uint8     // 0-7
-	program_slot_a       uint8     // 0-127
-	bank_slot_b          uint8     // 0-7
-	program_slot_b       uint8     // 0-127
-	bank_slot_c          uint8     // 0-7
-	program_slot_c       uint8     // 0-127
-	bank_slot_d          uint8     // 0-7
-	program_slot_d       uint8     // 0-127
-	morph3_source_select uint8     // 0-1 Control pedal or aftertouch
-	midi_clock_keysync   uint8     // 0-1 Off or On
-	keyboard_hold        uint8     // 0-1 Off or On
-	spare3               uint8     // Always set to zero
-	spare4               uint8     // Always set to zero
-	spare5               uint8     // Always set to zero
-	spare6               uint8     // Always set to zero
-	spare7               uint8     // Always set to zero
-	spare8               uint8     // Always set to zero
-	spare9               uint8     // Always set to zero
-	spare10              uint8     // Always set to zero
-	spare11              uint8     // Always set to zero
-	spare12              uint8     // Always set to zero
-	midi_clock_rate      uint16    // 0-210
-	bend_range_up        uint8     // 0-24
-	bend_range_down      uint8     // 0-24
-	patchname_slot_a     [16]uint8 // Max 16 characters long
-	patchname_slot_b     [16]uint8 // Max 16 characters long
-	patchname_slot_c     [16]uint8 // Max 16 characters long
-	patchname_slot_d     [16]uint8 // Max 16 characters long
-	patch_data           [4]Program
-	checksum             uint8
+	Version_number       uint     `len:"16"`                  // Decimal OS version number (# x	100	)
+	Enabled_slots        uint     `len:"8" min:"0" max:"127"` // 0-15
+	Focused_slot         uint     `len:"8" min:"0" max:"127"` // 0-3
+	Midi_channel_slot_a  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
+	Midi_channel_slot_b  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
+	Midi_channel_slot_c  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
+	Midi_channel_slot_d  uint     `len:"8" min:"0" max:"127"` // 0-16 0 = Off
+	Audio_channel_slot_a uint     `len:"8" min:"0" max:"127"` // 0-5
+	Audio_channel_slot_b uint     `len:"8" min:"0" max:"127"` // 0-5
+	Audio_channel_slot_c uint     `len:"8" min:"0" max:"127"` // 0-5
+	Audio_channel_slot_d uint     `len:"8" min:"0" max:"127"` // 0-5
+	Splitpoint_key       uint     `len:"8" min:"0" max:"127"` // 0-127
+	Splitpoint           bool     `len:"8" min:"0" max:"127"` // 0-1 Off or On
+	Sustain_enable       uint     `len:"8" min:"0" max:"127"` // 0-15
+	Pitchbend_enable     uint     `len:"8" min:"0" max:"127"` // 0-15
+	Modwheel_enable      uint     `len:"8" min:"0" max:"127"` // 0-15
+	Bank_slot_a          uint     `len:"3" min:"0" max:"7"`
+	Program_slot_a       uint     `len:"8" min:"0" max:"127"`
+	Bank_slot_b          uint     `len:"3" min:"0" max:"7"`
+	Program_slot_b       uint     `len:"8" min:"0" max:"127"`
+	Bank_slot_c          uint     `len:"3" min:"0" max:"7"`
+	Program_slot_c       uint     `len:"8" min:"0" max:"127"`
+	Bank_slot_d          uint     `len:"3" min:"0" max:"7"`
+	Program_slot_d       uint     `len:"8" min:"0" max:"127"`
+	Morph3_source_select bool     `len:"8"` // 0-1 Control pedal or aftertouch
+	Midi_clock_keysync   bool     `len:"8"`
+	Keyboard_hold        bool     `len:"8"`
+	Spare3               uint     `len:"8"`
+	Spare4               uint     `len:"8"`
+	Spare5               uint     `len:"8"`
+	Spare6               uint     `len:"8"`
+	Spare7               uint     `len:"8"`
+	Spare8               uint     `len:"8"`
+	Spare9               uint     `len:"8"`
+	Spare10              uint     `len:"8"`
+	Spare11              uint     `len:"8"`
+	Spare12              uint     `len:"8"`
+	Midi_clock_rate      uint     `len:"8" min:"0" max:"210"` // 0-210
+	Bend_range_up        uint     `len:"8" min:"0" max:"24"`  // 0-24
+	Bend_range_down      uint     `len:"8" min:"0" max:"24"`  // 0-24
+	Patchname_slot_a     [16]byte `len:"7"`                   // Read as 16 chars of 7 bits, so read 7 bits into each of 16 bytes
+	Patchname_slot_b     [16]byte `len:"7"`
+	Patchname_slot_c     [16]byte `len:"7"`
+	Patchname_slot_d     [16]byte `len:"7"`
+	Patch_data_a         Program  `len:"191"`
+	Patch_data_b         Program  `len:"191"`
+	Patch_data_c         Program  `len:"191"`
+	Patch_data_d         Program  `len:"191"`
+	Checksum             uint     `len:"8"`
 }
 
 func ParseSysex(rawSysex []byte) (*Sysex, error) {
@@ -378,4 +485,79 @@ func ParseSysex(rawSysex []byte) (*Sysex, error) {
 	_, err := sysex.valid()
 
 	return &sysex, err
+}
+
+func NewProgramFromBitstream(data []byte) (*Program, error) {
+	// Use reflection to get each field in the struct and it's length, then read that into it
+	program := new(Program)
+	err := populateStructFromBitstream(program, data)
+	return program, err
+}
+
+func populateStructFromBitstream(i interface{}, data []byte) error {
+	rt := reflect.TypeOf(i).Elem()
+	rv := reflect.ValueOf(i).Elem()
+
+	return populateReflectedStructFromBitstream(rt, rv, data)
+}
+
+func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte) error {
+	reader := bitstream.NewReader(strings.NewReader(string(data)))
+	err := (error)(nil)
+
+	for i := 0; i < rt.NumField(); i++ {
+		sf := rt.Field(i)
+		rf := rv.Field(i)
+
+		// fmt.Printf("Setting %q", sf.Name)
+
+		if strLen, ok := sf.Tag.Lookup("len"); ok {
+			len, _ := strconv.Atoi(strLen)
+			if len < 64 { // handling a bool or various length integer/uint
+				bits, err := reader.ReadBits(len)
+				if err != nil {
+					if err == io.EOF {
+						// fmt.Println("Reached EOF")
+						break
+					} else {
+						return errors.New(fmt.Sprintf("GetBit returned error err %v", err.Error()))
+					}
+				}
+				// fmt.Printf(" to %#x\n", bits)
+
+				switch rf.Kind() {
+				case reflect.Int:
+					rf.SetInt(int64(bits))
+				case reflect.Uint:
+					rf.SetUint(bits)
+				case reflect.Bool:
+					rf.SetBool(bits == 1)
+				default:
+					return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
+				}
+			} else { // we're handling a sub-struct
+				lenInBytes := len / 8
+				buf := bytes.NewBuffer(nil)
+				writer := bitstream.NewWriter(buf)
+
+				for i := 0; i < lenInBytes; i++ {
+					byteRead, err := reader.ReadByte()
+					if err != nil {
+						break
+					}
+					writer.WriteByte(byteRead)
+				}
+				subData := buf.Bytes()
+
+				newSub := reflect.New(sf.Type)
+				// fmt.Printf("creating and populating a %q with %q. Got:\n%x\n", sf.Type, newSub.Type(), subData)
+				_ = populateReflectedStructFromBitstream(newSub.Elem().Type(), newSub.Elem(), subData)
+				rf.Set(newSub.Elem())
+			}
+		} else {
+			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
+		}
+	}
+
+	return err
 }

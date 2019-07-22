@@ -82,4 +82,6 @@ func main() {
 		panic(err)
 	}
 	fmt.Printf("Found %v valid SysEx entries (%v invalid).", validFound, invalidFound)
+
+	fmt.Printf(memory.DumpPrograms())
 }
