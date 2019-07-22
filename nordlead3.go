@@ -3,7 +3,7 @@ package nordlead3
 /*
 TODO:
 
- - Handle reading the byte arrays for the patch names in performances
+ - Get rid of programbank/performancebank abstractions as I don't think they're useful
  - Add output serializers (back to Sysex) and test roundtrip read -> output for equality
  - Write a bunch of useful tests for the core methods
  - Try to figure out how categories are implemented
@@ -56,37 +56,8 @@ func (sysex *Sysex) bank() uint8 {
 }
 
 func (sysex *Sysex) decodeBitstream() {
-	// MIDI 8-bit to bitstream decoding
-	// Every byte of the MIDI stream is actually only 7 bits of the payload bitstream
-	// so we need to drop a bit every byte and re-concatenate the bits
 	payload := sysex.rawSysex[PatchDataOffset:]
-	buf := bytes.NewBuffer(nil)
-	reader := bitstream.NewReader(strings.NewReader(string(payload)))
-	writer := bitstream.NewWriter(buf)
-	i := 0
-
-	for {
-		bit, err := reader.ReadBit()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			panic(fmt.Sprintf("GetBit returned error err %v", err.Error()))
-		}
-		if i%8 == 0 {
-			// skip
-		} else {
-			err = writer.WriteBit(bit)
-			if err == nil {
-				// skip
-			} else {
-				panic(fmt.Sprintf("Error writing bit: %v", err.Error()))
-			}
-		}
-		i++
-	}
-
-	sysex.decodedBitstream = buf.Bytes()
+	sysex.decodedBitstream = unpackSysex(payload)
 }
 
 func (sysex *Sysex) location() uint8 {
@@ -125,7 +96,6 @@ func (sysex *Sysex) printableType() string {
 }
 
 func (sysex *Sysex) valid() (bool, error) {
-	var runningSum uint8
 	var errStrs []string
 
 	// Verify message type and expected length
@@ -145,11 +115,9 @@ func (sysex *Sysex) valid() (bool, error) {
 	// Compute and validate 8-bit checksum
 	checksum := sysex.decodedBitstream[len(sysex.decodedBitstream)-1]
 	payload := sysex.decodedBitstream[:len(sysex.decodedBitstream)-1]
-	for _, currByte := range payload {
-		runningSum += uint8(currByte)
-	}
-	if checksum != runningSum {
-		errStrs = append(errStrs, fmt.Sprintf("Checksum mismatch parsing %s (%v:%03d %q): expected %x, got %x", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), checksum, runningSum))
+	calculatedChecksum := checksum8(payload)
+	if checksum != calculatedChecksum {
+		errStrs = append(errStrs, fmt.Sprintf("Checksum mismatch parsing %s (%v:%03d %q): expected %x, got %x", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), checksum, calculatedChecksum))
 	}
 
 	// Handle return values
@@ -168,9 +136,52 @@ func (sysex *Sysex) version() float64 {
 // The main object responsible for organizing programs and performances.
 
 type PatchMemory struct {
-	programs     [8]ProgramBank
-	performances [2]PerformanceBank
+	Programs     [8]ProgramBank
+	Performances [2]PerformanceBank
 }
+
+// Dumps a program as sysex in NL3 format
+func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
+	buffer := bytes.NewBuffer(nil)
+	programLocation := memory.Programs[bank].Programs[location]
+	program := programLocation.Program
+
+	// assemble sysex prelude
+	buffer.WriteString(string([]byte{0xF0, 0x33, 0x7F, 0x09, 0x21, bank, location}))
+	for i := 0; i < 16; i++ {
+		currByte := programLocation.Name[i]
+		if uint8(currByte) < 128 {
+			buffer.WriteByte(currByte)
+		} else {
+			panic("Sysex values cannot exceed 127!")
+		}
+	}
+	buffer.Write((*new([16]byte))[:]) // 16 spare 0x00
+
+	// Append version x 100 as uint16
+	versionX100 := uint16(programLocation.Version * 100)
+	buffer.Write([]byte{ byte(versionX100 >> 8), byte(versionX100) })
+
+	// concatenate program data
+	progPayload, err := program.DumpSysex()
+	if err != nil {
+		return nil, err
+	}
+	buffer.Write(*progPayload)
+
+	// finally, bang on the trailing 0xF7
+	buffer.WriteByte(0xF7)
+
+	// grab the buffer
+	sysex := buffer.Bytes()
+
+	return &sysex, nil
+}
+
+// // Dumps a performance as sysex in NL3 format
+// func (memory *PatchMemory) DumpPerformance(bank, location int) (*[]byte, error) {
+
+// }
 
 func (memory *PatchMemory) LoadFromSysex(sysex *Sysex) error {
 	err := *new(error)
@@ -193,7 +204,7 @@ func (memory *PatchMemory) LoadPerformanceFromSysex(sysex *Sysex) {
 	performance, err := NewPerformanceFromBitstream(sysex.decodedBitstream)
 	if err == nil {
 		perfLocation := PerformanceLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Performance: performance}
-		memory.performances[sysex.bank()].performances[sysex.location()] = &perfLocation
+		memory.Performances[sysex.bank()].Performances[sysex.location()] = &perfLocation
 		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
 	} else {
 		panic(err)
@@ -204,7 +215,7 @@ func (memory *PatchMemory) LoadProgramFromSysex(sysex *Sysex) {
 	program, err := NewProgramFromBitstream(sysex.decodedBitstream)
 	if err == nil {
 		programLocation := ProgramLocation{Name: sysex.nameAsArray(), Version: sysex.version(), Program: program}
-		memory.programs[sysex.bank()].programs[sysex.location()] = &programLocation
+		memory.Programs[sysex.bank()].Programs[sysex.location()] = &programLocation
 		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version())
 	} else {
 		panic(err)
@@ -215,7 +226,7 @@ func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 	var result []string
 
 	result = append(result, "\n***** PROGRAMS ******\n")
-	for bank, contents := range memory.programs {
+	for bank, contents := range memory.Programs {
 		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 		result = append(result, bank_header)
 		result = append(result, contents.PrintSummary(omitBlank))
@@ -229,7 +240,7 @@ func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
 
-	for bank, contents := range memory.performances {
+	for bank, contents := range memory.Performances {
 		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 		result = append(result, bank_header)
 		result = append(result, contents.PrintSummary(omitBlank))
@@ -239,14 +250,13 @@ func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 }
 
 type ProgramBank struct {
-	id       uint
-	programs [128]*ProgramLocation
+	Programs [128]*ProgramLocation
 }
 
 func (bank *ProgramBank) PrintSummary(omitBlank bool) string {
 	var result []string
 
-	for location, program := range bank.programs {
+	for location, program := range bank.Programs {
 		if program != nil {
 			result = append(result, fmt.Sprintf("   %3d : %+-16.16q (%1.2f)", location, program.PrintableName(), program.Version))
 		} else if !omitBlank {
@@ -258,14 +268,13 @@ func (bank *ProgramBank) PrintSummary(omitBlank bool) string {
 }
 
 type PerformanceBank struct {
-	id           uint
-	performances [128]*PerformanceLocation
+	Performances [128]*PerformanceLocation
 }
 
 func (bank *PerformanceBank) PrintSummary(omitBlank bool) string {
 	var result []string
 
-	for location, performance := range bank.performances {
+	for location, performance := range bank.Performances {
 		if performance != nil {
 			result = append(result, fmt.Sprintf("   %3d : %16.16q (%1.2f)", location, performance.PrintableName(), performance.Version))
 		} else if !omitBlank {
@@ -447,6 +456,22 @@ type MorphParams struct {
 	Output_level          int `len:"8" min:"-128" max:"127"`
 }
 
+func (program *Program) DumpSysex() (*[]byte, error) {
+	if program == nil {
+		return nil, errors.New("Cannot dump a blank program - no init values set!")
+	}
+
+	payload, err := bitstreamFromStruct(program)
+	if err != nil {
+		return nil, err
+	}
+
+	payload = append(payload, checksum8(payload))
+	packedPayload := packSysex(payload)
+
+	return &packedPayload, nil
+}
+
 type Performance struct {
 	Version_number       uint     `len:"16"`                  // Decimal OS version number (# x	100	)
 	Enabled_slots        uint     `len:"8" min:"0" max:"127"` // 0-15
@@ -540,7 +565,7 @@ func populateStructFromBitstream(i interface{}, data []byte) error {
 }
 
 func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte) error {
-	reader := bitstream.NewReader(strings.NewReader(string(data)))
+	reader := bitstream.NewReader(bytes.NewReader(data))
 	err := (error)(nil)
 
 	for i := 0; i < rt.NumField(); i++ {
@@ -576,6 +601,63 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 				}
 			default:
 				return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
+			}
+		} else {
+			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
+		}
+
+		if err != nil {
+			break
+		}
+	}
+
+	return err
+}
+
+func bitstreamFromStruct(i interface{}) ([]byte, error) {
+	rt := reflect.TypeOf(i).Elem()
+	rv := reflect.ValueOf(i).Elem()
+
+	buf := bytes.NewBuffer(nil)
+	writer := bitstream.NewWriter(buf)
+
+	err := writeBitstreamFromReflection(writer, rt, rv)
+	return buf.Bytes(), err
+}
+
+func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value) error {
+	err := (error)(nil)
+
+	for i := 0; i < rt.NumField(); i++ {
+		sf := rt.Field(i) // Type of the StructField (for reading tags)
+		rf := rv.Field(i) // Value of the struct field (for reading actual value)
+
+		if strLen, ok := sf.Tag.Lookup("len"); ok {
+			numBitsToWrite, _ := strconv.Atoi(strLen)
+			switch rf.Kind() {
+			case reflect.Int:
+				err = writer.WriteBits(uint64(rv.Int()), numBitsToWrite)
+			case reflect.Uint:
+				err = writer.WriteBits(rv.Uint(), numBitsToWrite)
+			case reflect.Bool:
+				err = writer.WriteBit(bitstream.Bit(rv.Bool()))
+			case reflect.Array:
+				size := rf.Len()
+
+				for i := 0; i < size; i++ {
+					rfi := rf.Index(i)
+					err = writer.WriteBits(rfi.Uint(), numBitsToWrite)
+					if err != nil {
+						break
+					}
+				}
+			case reflect.Struct:
+				err = writeBitstreamFromReflection(writer, rv.Type(), rv.Elem())
+				if err != nil {
+					break
+				}
+			default:
+				err = errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 			}
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
@@ -635,4 +717,65 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 		writer.WriteByte(byteRead)
 	}
 	return buf.Bytes(), nil
+}
+
+// MIDI 8-bit to bitstream decoding
+// Every byte of the MIDI stream is actually only 7 bits of the payload bitstream
+// so we need to drop a bit every byte and re-concatenate the bits
+func unpackSysex(payload []byte) []byte {
+	buf := bytes.NewBuffer(nil)
+	reader := bitstream.NewReader(bytes.NewReader(payload))
+	writer := bitstream.NewWriter(buf)
+	i := 0
+
+	for {
+		bit, err := reader.ReadBit()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			panic(fmt.Sprintf("GetBit returned error err %v", err.Error()))
+		}
+		if i%8 == 0 {
+			// skip
+		} else {
+			err = writer.WriteBit(bit)
+			if err == nil {
+				// skip
+			} else {
+				panic(fmt.Sprintf("Error writing bit: %v", err.Error()))
+			}
+		}
+		i++
+	}
+
+	return buf.Bytes()
+}
+
+// Encodes 8-bit binary data as bytes with 7 bits of data
+// in the LSB and the MSB set to 0. For transmission over sysex.
+func packSysex(payload []byte) []byte {
+	buf := bytes.NewBuffer(nil)
+	reader := bitstream.NewReader(bytes.NewReader(payload))
+	writer := bitstream.NewWriter(buf)
+
+	for {
+		bits, err := reader.ReadBits(7)
+		if err != nil && err != io.EOF {
+			panic(err)
+		}
+		writer.WriteBits(bits, 8)
+	}
+
+	return buf.Bytes()
+}
+
+func checksum8(payload []byte) byte {
+	var runningSum uint8
+
+	for _, currByte := range payload {
+		runningSum += uint8(currByte)
+	}
+
+	return runningSum
 }
