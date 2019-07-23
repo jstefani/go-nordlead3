@@ -191,11 +191,20 @@ func packSysex(payload []byte) []byte {
 	writer := bitstream.NewWriter(buf)
 
 	for {
-		bits, err := reader.ReadBits(7)
-		if err != nil && err != io.EOF {
-			panic(err)
+		var err error
+		var bit bitstream.Bit
+
+		writer.WriteBit(bitstream.Zero)
+		for i := 0; i < 7; i++ {
+			bit, err = reader.ReadBit()
+			if err != nil && err != io.EOF {
+				panic(err)
+			}
+			if err == io.EOF {
+				break
+			}
+			writer.WriteBit(bit)
 		}
-		writer.WriteBits(bits, 8)
 		if err == io.EOF {
 			break
 		}
