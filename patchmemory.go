@@ -13,14 +13,14 @@ import (
 // The main object responsible for organizing programs and performances.
 
 type PatchMemory struct {
-	Programs     [8]ProgramBank
-	Performances [2]PerformanceBank
+	Programs     [8][128]*ProgramLocation
+	Performances [2][128]*PerformanceLocation
 }
 
 // Dumps a program as sysex in NL3 format
 func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
 	buffer := bytes.NewBuffer(nil)
-	programLocation := memory.Programs[bank].Programs[location]
+	programLocation := memory.Programs[bank][location]
 	program := programLocation.Program
 
 	// assemble sysex prelude
@@ -41,7 +41,7 @@ func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
 	buffer.Write([]byte{byte(versionX100 >> 8), byte(versionX100)})
 
 	// concatenate program data
-	progPayload, err := program.DumpSysex()
+	progPayload, err := program.dumpSysex()
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +129,8 @@ func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
 	performance, err := newPerformanceFromBitstream(sysex.decodedBitstream)
 	if err == nil {
 		perfLocation := PerformanceLocation{Name: sysex.nameAsArray(), Category: sysex.category(), Version: sysex.version(), Performance: performance}
-		memory.Performances[sysex.bank()].Performances[sysex.location()] = &perfLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category())
+		memory.Performances[sysex.bank()][sysex.location()] = &perfLocation
+		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else {
 		panic(err)
 	}
@@ -140,8 +140,8 @@ func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) {
 	program, err := newProgramFromBitstream(sysex.decodedBitstream)
 	if err == nil {
 		programLocation := ProgramLocation{Name: sysex.nameAsArray(), Category: sysex.category(), Version: sysex.version(), Program: program}
-		memory.Programs[sysex.bank()].Programs[sysex.location()] = &programLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category())
+		memory.Programs[sysex.bank()][sysex.location()] = &programLocation
+		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else {
 		panic(err)
 	}
@@ -151,10 +151,16 @@ func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 	var result []string
 
 	result = append(result, "\n***** PROGRAMS ******\n")
-	for bank, contents := range memory.Programs {
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+	for numBank, bank := range memory.Programs {
+		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", numBank+1)
 		result = append(result, bank_header)
-		result = append(result, contents.PrintSummary(omitBlank))
+
+		for location, program := range bank {
+			if program != nil || !omitBlank {
+				result = append(result, fmt.Sprintf("   %3d : %s", location, program.summary()))
+			}
+		}
+
 	}
 
 	return strings.Join(result, "\n")
@@ -165,10 +171,15 @@ func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
 
-	for bank, contents := range memory.Performances {
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+	for numBank, bank := range memory.Performances {
+		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", numBank+1)
 		result = append(result, bank_header)
-		result = append(result, contents.PrintSummary(omitBlank))
+
+		for location, performance := range bank {
+			if performance != nil || !omitBlank {
+				result = append(result, fmt.Sprintf("   %3d : %s", location, performance.summary()))
+			}
+		}
 	}
 
 	return strings.Join(result, "\n")

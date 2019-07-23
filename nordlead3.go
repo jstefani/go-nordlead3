@@ -3,7 +3,6 @@ package nordlead3
 /*
 TODO:
 
- - Get rid of programbank/performancebank abstractions as I don't think they're useful
  - Add output serializers (back to Sysex) and test roundtrip read -> output for equality
  - Write a bunch of useful tests for the core methods
  - Try to figure out how categories are implemented
@@ -21,76 +20,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/dgryski/go-bitstream"
 )
-
-type ProgramBank struct {
-	Programs [128]*ProgramLocation
-}
-
-func (bank *ProgramBank) PrintSummary(omitBlank bool) string {
-	var result []string
-
-	for location, program := range bank.Programs {
-		if program != nil {
-			result = append(result, fmt.Sprintf("   %3d : %+-16.16q (%1.2f)", location, program.PrintableName(), program.Version))
-		} else if !omitBlank {
-			result = append(result, fmt.Sprintf("   %3d : %+-16.16q", location, program.PrintableName()))
-		}
-	}
-
-	return strings.Join(result, "\n")
-}
-
-type PerformanceBank struct {
-	Performances [128]*PerformanceLocation
-}
-
-func (bank *PerformanceBank) PrintSummary(omitBlank bool) string {
-	var result []string
-
-	for location, performance := range bank.Performances {
-		if performance != nil {
-			result = append(result, fmt.Sprintf("   %3d : %16.16q (%1.2f)", location, performance.PrintableName(), performance.Version))
-		} else if !omitBlank {
-			result = append(result, fmt.Sprintf("   %3d : %16.16q", location, performance.PrintableName()))
-		}
-	}
-
-	return strings.Join(result, "\n")
-}
-
-type ProgramLocation struct {
-	Name     [16]byte
-	Category uint8
-	Version  float64
-	Program  *Program
-}
-
-func (progLoc *ProgramLocation) PrintableName() string {
-	if progLoc == nil {
-		return "** Uninitialized"
-	}
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(progLoc.Name[:]), "\x00"))
-}
-
-type PerformanceLocation struct {
-	Name        [16]byte
-	Category    uint8
-	Version     float64
-	Performance *Performance
-}
-
-func (perfLoc *PerformanceLocation) PrintableName() string {
-	if perfLoc == nil {
-		return "** Uninitialized"
-	}
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(perfLoc.Name[:]), "\x00"))
-}
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
 	// Use reflection to get each field in the struct and it's length, then read that into it
@@ -159,6 +94,7 @@ func bitstreamFromStruct(i interface{}) ([]byte, error) {
 	writer := bitstream.NewWriter(buf)
 
 	err := writeBitstreamFromReflection(writer, rt, rv)
+	writer.Flush(bitstream.Zero)
 	return buf.Bytes(), err
 }
 
@@ -230,7 +166,7 @@ func readBool(into reflect.Value, from *bitstream.BitReader) error {
 }
 
 func readInt(into reflect.Value, from *bitstream.BitReader, length int) error {
-	bits, err := from.ReadBits(1)
+	bits, err := from.ReadBits(length)
 	if err != nil {
 		return err
 	}
@@ -245,7 +181,11 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 
 	// Currently we only support lengths in even bytes,
 	// but we still read them unaligned (bitwise) from the reader.
-	for i := 0; i < length/8; i++ {
+	numBytesToRead := length / 8
+	if length%8 > 0 {
+		panic("Reading lengths not evenly divisible by 8 is not yet supported.")
+	}
+	for i := 0; i < numBytesToRead; i++ {
 		byteRead, err := from.ReadByte()
 		if err != nil {
 			return buf.Bytes(), err

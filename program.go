@@ -112,10 +112,10 @@ type Program struct {
 	A_touch_morph_params  MorphParams `len:"208"`
 	Velocity_morph_params MorphParams `len:"208"`
 	Kbd_morph_params      MorphParams `len:"208"`
-	Chord_mem_count       uint        `len:"5" min:"0" max:"23"`
-	Chord_mem_position    uint        `len:"8" min:"0" max:"255"`
-	Spare8                uint        `len:"8"`
-	Checksum              uint        `len:"8" min:"0" max:"255"`
+	Chord_count           uint        `len:"5" min:"0" max:"23"`
+	Chord_positions       [24]uint    `len:"8"`
+	Spare8                uint        `len:"20"` // unsure if this is correct, it has data from the chord count in it
+	// Checksum              uint        `len:"8" min:"0" max:"255"`
 }
 
 type MorphParams struct {
@@ -147,7 +147,7 @@ type MorphParams struct {
 	Output_level          int `len:"8" min:"-128" max:"127"`
 }
 
-func (program *Program) DumpSysex() (*[]byte, error) {
+func (program *Program) dumpSysex() (*[]byte, error) {
 	if program == nil {
 		return nil, errors.New("Cannot dump a blank program - no init values set!")
 	}
@@ -158,7 +158,6 @@ func (program *Program) DumpSysex() (*[]byte, error) {
 	}
 
 	payload = append(payload, checksum8(payload))
-
 	packedPayload := packSysex(payload)
 
 	return &packedPayload, nil

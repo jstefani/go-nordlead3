@@ -44,12 +44,19 @@ func (sysex *Sysex) bank() uint8 {
 }
 
 func (sysex *Sysex) decodeBitstream() {
-	payload := sysex.rawSysex[PatchDataOffset:]
-	sysex.decodedBitstream = unpackSysex(payload)
+	sysex.decodedBitstream = unpackSysex(sysex.rawBitstream())
+}
+
+func (sysex *Sysex) rawBitstream() []byte {
+	return sysex.rawSysex[PatchDataOffset:]
 }
 
 func (sysex *Sysex) location() uint8 {
 	return sysex.rawSysex[5]
+}
+
+func (sysex *Sysex) checksum() uint8 {
+	return sysex.decodedBitstream[len(sysex.decodedBitstream)-1]
 }
 
 func (sysex *Sysex) messageType() uint8 {
@@ -193,6 +200,6 @@ func packSysex(payload []byte) []byte {
 			break
 		}
 	}
-
+	writer.Flush(bitstream.Zero)
 	return buf.Bytes()
 }
