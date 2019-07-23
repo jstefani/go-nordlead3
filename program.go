@@ -4,6 +4,8 @@ import (
 	"errors"
 )
 
+// Cross-checked against what is actually sent by the unit, does not line up with documentation!
+// Valid only for v1.20 programs.
 type Program struct {
 	Version_number        uint        `len:"16"`
 	Osc1_shape            uint        `len:"7" min:"0" max:"127"`
@@ -54,8 +56,12 @@ type Program struct {
 	Lfo1_sync_divisor     uint        `len:"7" min:"0" max:"127"`
 	Lfo2_sync_divisor     uint        `len:"7" min:"0" max:"127"`
 	Transpose             uint        `len:"7" min:"0" max:"127"`
-	Spare3                uint        `len:"8" min:"0" max:"255"`
-	Spare4                uint        `len:"8" min:"0" max:"255"`
+	Arp_mask_len          uint        `len:"4" min:"0" max:"15"`
+	Sub_arp_mode          uint        `len:"4" min:"0" max:"4"`
+	Spare3                uint        `len:"2"`
+	Sub_arp_range         uint        `len:"3" min:"0" max:"8"`
+	Spare4                bool        `len:"1"`
+	Arp_sub_mode          uint        `len:"2" min:"0" max:"3"`
 	Osc1_waveform         uint        `len:"3" min:"0" max:"5"`
 	Osc1_sync             bool        `len:"1" min:"0" max:"1"`
 	Osc2_waveform         uint        `len:"3" min:"0" max:"5"`
@@ -66,13 +72,18 @@ type Program struct {
 	Lfo1_waveform         uint        `len:"3" min:"0" max:"5"`
 	Lfo1_destination      uint        `len:"4" min:"0" max:"11"`
 	Lfo1_env_kbs          uint        `len:"2" min:"0" max:"2"`
+	Lfo1_spare1           bool        `len:"1"`
 	Lfo1_mono             bool        `len:"1"`
+	Spare5                bool        `len:"1"`
 	Lfo1_invert           bool        `len:"1"`
 	Lfo2_waveform         uint        `len:"3" min:"0" max:"5"`
 	Lfo2_destination      uint        `len:"4" min:"0" max:"11"`
 	Lfo2_env_kbs          uint        `len:"2" min:"0" max:"2"`
+	Spare6                bool        `len:"1"`
 	Lfo2_mono             bool        `len:"1"`
+	Lfo2_spare2           bool        `len:"1"`
 	Lfo2_invert           bool        `len:"1"`
+	Spare7                bool        `len:"1"`
 	Mod_env_invert        bool        `len:"1"`
 	Mod_env_destination   uint        `len:"4" min:"0" max:"11"`
 	Mod_env_mode          bool        `len:"1"`
@@ -97,24 +108,24 @@ type Program struct {
 	Vibrato_source        uint        `len:"2" min:"0" max:"2"`
 	Mono_mode             bool        `len:"1"`
 	Arpeggio_run          bool        `len:"1"`
-	Spare5                uint        `len:"8" min:"0" max:"255"`
+	Spare8                bool        `len:"1"`
 	Unison_mode           bool        `len:"1"`
 	Octave_shift          uint        `len:"3" min:"0" max:"4"`
 	Chord_mem_mode        bool        `len:"1"`
 	Arpeggio_mode         uint        `len:"3" min:"0" max:”3"`
 	Arpeggio_range        uint        `len:"3" min:"0" max:"3"`
 	Arpeggio_kbd_sync     bool        `len:"1"`
-	Spare6                uint        `len:"8" min:"0" max:"255"`
-	Spare7                bool        `len:"1"`
+	Spare9                uint        `len:"2"`
+	Arp_mask              uint        `len:"16"`
 	Legato_mode           bool        `len:"1"`
 	Mono_allocation_mode  uint        `len:"2" min:"0" max:"2"`
 	Wheel_morph_params    MorphParams `len:"208"`
 	A_touch_morph_params  MorphParams `len:"208"`
 	Velocity_morph_params MorphParams `len:"208"`
 	Kbd_morph_params      MorphParams `len:"208"`
-	Chord_count           uint        `len:"5" min:"0" max:"23"`
+	Chord_count           uint        `len:"4" min:"0" max:"16"` // This is SUPER odd, should be 5 bits, but it caps at 0xFFFF from the unit.
 	Chord_positions       [24]uint    `len:"8"`
-	Spare8                uint        `len:"20"` // unsure if this is correct, it has data from the chord count in it
+	Spare10               uint        `len:"8"`
 	// Checksum              uint        `len:"8" min:"0" max:"255"`
 }
 

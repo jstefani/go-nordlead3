@@ -3,7 +3,8 @@ package nordlead3
 /*
 TODO:
 
- - Add output serializers (back to Sysex) and test roundtrip read -> output for equality
+ - Figure out why the heck the fields aren't lining up exactly with the chord memory and the last 8... something's off.
+     - I think not even the morphs are lining up right, so check that too
  - Write a bunch of useful tests for the core methods
  - Try to figure out how categories are implemented
  - Create useful functions for manipulating memory:
