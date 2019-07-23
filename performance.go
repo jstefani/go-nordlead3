@@ -1,5 +1,9 @@
 package nordlead3
 
+import (
+	"errors"
+)
+
 type Performance struct {
 	Version_number       uint     `len:"16"`                  // Decimal OS version number (# x	100	)
 	Enabled_slots        uint     `len:"8" min:"0" max:"127"` // 0-15
@@ -50,4 +54,20 @@ type Performance struct {
 	Patch_data_c         Program  `len:"191"`
 	Patch_data_d         Program  `len:"191"`
 	Checksum             uint     `len:"8"`
+}
+
+func (performance *Performance) dumpSysex() (*[]byte, error) {
+	if performance == nil {
+		return nil, errors.New("Cannot dump a blank performance - no init values set!")
+	}
+
+	payload, err := bitstreamFromStruct(performance)
+	if err != nil {
+		return nil, err
+	}
+
+	payload = append(payload, checksum8(payload))
+	packedPayload := packSysex(payload)
+
+	return &packedPayload, nil
 }

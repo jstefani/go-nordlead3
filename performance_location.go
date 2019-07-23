@@ -6,22 +6,26 @@ import (
 )
 
 type PerformanceLocation struct {
-	Name        [16]byte
-	Category    uint8
-	Version     float64
-	Performance *Performance
+	name        [16]byte
+	category    uint8
+	version     float64
+	performance *Performance
 }
 
 func (perfLoc *PerformanceLocation) PrintableName() string {
 	if perfLoc == nil {
 		return "** Uninitialized"
 	}
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(perfLoc.Name[:]), "\x00"))
+	return fmt.Sprintf("%-16s", strings.TrimRight(string(perfLoc.name[:]), "\x00"))
 }
 
-func (perfLoc *PerformanceLocation) summary() string {
+func (perfLoc *PerformanceLocation) Summary() string {
 	if perfLoc == nil {
 		return "** Uninitialized"
 	}
-	return fmt.Sprintf("%16.16q (%1.2f)", perfLoc.PrintableName(), perfLoc.Version)
+	return fmt.Sprintf("%16.16q (%1.2f)", perfLoc.PrintableName(), perfLoc.version)
+}
+
+func (perfLoc *PerformanceLocation) Version() float64 {
+	return perfLoc.version
 }

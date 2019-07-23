@@ -6,22 +6,26 @@ import (
 )
 
 type ProgramLocation struct {
-	Name     [16]byte
-	Category uint8
-	Version  float64
-	Program  *Program
+	name     [16]byte
+	category uint8
+	version  float64
+	program  *Program
 }
 
 func (progLoc *ProgramLocation) PrintableName() string {
 	if progLoc == nil {
 		return "** Uninitialized"
 	}
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(progLoc.Name[:]), "\x00"))
+	return fmt.Sprintf("%-16s", strings.TrimRight(string(progLoc.name[:]), "\x00"))
 }
 
-func (progLoc *ProgramLocation) summary() string {
+func (progLoc *ProgramLocation) Summary() string {
 	if progLoc == nil {
 		return "** Uninitialized"
 	}
-	return fmt.Sprintf("%+-16.16q (%1.2f)", progLoc.PrintableName(), progLoc.Version)
+	return fmt.Sprintf("%+-16.16q (%1.2f)", progLoc.PrintableName(), progLoc.version)
+}
+
+func (progLoc *ProgramLocation) Version() float64 {
+	return progLoc.version
 }

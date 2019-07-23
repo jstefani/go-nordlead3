@@ -212,12 +212,9 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	writer := bitstream.NewWriter(buf)
 
-	// Currently we only support lengths in even bytes,
-	// but we still read them unaligned (bitwise) from the reader.
 	numBytesToRead := length / 8
-	if length%8 > 0 {
-		panic("Reading lengths not evenly divisible by 8 is not yet supported.")
-	}
+	numTrailingBitsToRead := length % 8
+
 	for i := 0; i < numBytesToRead; i++ {
 		byteRead, err := from.ReadByte()
 		if err != nil {
@@ -225,7 +222,16 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 		}
 		writer.WriteByte(byteRead)
 	}
-	// fmt.Printf(" >> Read %d bytes: %x\n", numBytesToRead, buf.Bytes())
+	for i := 0; i < numTrailingBitsToRead; i++ {
+		bit, err := from.ReadBit()
+		if err != nil {
+			return buf.Bytes(), err
+		}
+		writer.WriteBit(bit)
+	}
+	writer.Flush(bitstream.Zero)
+
+	fmt.Printf(" >> Read %d bytes and %d bits: %x\n", numBytesToRead, numTrailingBitsToRead, buf.Bytes())
 	return buf.Bytes(), nil
 }
 
