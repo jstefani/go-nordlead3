@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
+	// "math"
 	"reflect"
 	"strconv"
 
@@ -39,6 +39,8 @@ func populateStructFromBitstream(i interface{}, data []byte) error {
 func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte) error {
 	reader := bitstream.NewReader(bytes.NewReader(data))
 	err := (error)(nil)
+	// bitIx := 0
+	// byteIx := 0
 
 	for i := 0; i < rt.NumField(); i++ {
 		sf := rt.Field(i) // Type of the StructField (for reading tags)
@@ -49,21 +51,26 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 			switch rf.Kind() {
 			case reflect.Int:
 				err = readInt(rf, reader, numBitsToRead)
+				// fmt.Printf("%4d:%-4d Read %d bits into %s (%s): %x\n", bitIx, byteIx, numBitsToRead, sf.Name, sf.Type, rf.Int())
 			case reflect.Uint:
 				err = readUint(rf, reader, numBitsToRead)
+				// fmt.Printf("%4d:%-4d Read %d bits into %s (%s): %x\n", bitIx, byteIx, numBitsToRead, sf.Name, sf.Type, rf.Uint())
 			case reflect.Bool:
 				err = readBool(rf, reader)
+				// fmt.Printf("%4d:%-4d Read %d bits into %s (%s): %t\n", bitIx, byteIx, numBitsToRead, sf.Name, sf.Type, rf.Bool())
 			case reflect.Array:
 				size := rf.Len()
 
 				for i := 0; i < size; i++ {
 					rfi := rf.Index(i)
 					err = readUint(rfi, reader, numBitsToRead)
+					// fmt.Printf("%4d:%-4d > Read %d bits into %s (%s): %x\n", bitIx, byteIx, numBitsToRead, sf.Name, sf.Type, rfi.Uint())
 					if err != nil {
 						break
 					}
 				}
 			case reflect.Struct:
+				// fmt.Println(" >> Diving into ", sf.Name)
 				bytes, err := readUnaligned(reader, numBitsToRead)
 				if err == nil {
 					newStruct := reflect.New(sf.Type)
@@ -74,6 +81,8 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 			default:
 				return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 			}
+			// bitIx += numBitsToRead
+			// byteIx = int(math.Ceil(float64(bitIx) / 8.0))
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
 		}
@@ -93,13 +102,17 @@ func bitstreamFromStruct(i interface{}) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	writer := bitstream.NewWriter(buf)
 
+	// err := writeBitstreamFromReflection(writer, rt, rv, buf)
 	err := writeBitstreamFromReflection(writer, rt, rv)
 	writer.Flush(bitstream.Zero)
 	return buf.Bytes(), err
 }
 
+// func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value, buf *bytes.Buffer) error {
 func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value) error {
 	err := (error)(nil)
+	// bitIx := 0
+	// byteIx := 0
 
 	for i := 0; i < rt.NumField(); i++ {
 		sf := rt.Field(i) // Type of the StructField (for reading tags)
@@ -110,28 +123,47 @@ func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, 
 			switch rf.Kind() {
 			case reflect.Int:
 				err = writer.WriteBits(uint64(rf.Int()), numBitsToWrite)
+				// p1, _ := writer.Pending()
+				// fmt.Printf("%4d:%-4d Wrote %2d bits from %21s (%4s): %#02x | %x | %02x\n", bitIx, byteIx, numBitsToWrite, sf.Name, sf.Type, uint8(rf.Int()), tail(buf, 16), p1)
 			case reflect.Uint:
 				err = writer.WriteBits(rf.Uint(), numBitsToWrite)
+				// p1, _ := writer.Pending()
+				// fmt.Printf("%4d:%-4d Wrote %2d bits from %21s (%4s): %#02x | %x | %02x\n", bitIx, byteIx, numBitsToWrite, sf.Name, sf.Type, rf.Uint(), tail(buf, 16), p1)
 			case reflect.Bool:
 				err = writer.WriteBit(bitstream.Bit(rf.Bool()))
+				// p1, _ := writer.Pending()
+				// fmt.Printf("%4d:%-4d Wrote %2d bits from %21s (%4s): %#02x | %x | %02x\n", bitIx, byteIx, numBitsToWrite, sf.Name, sf.Type, func() int {
+				// 	if rf.Bool() {
+				// 		return 1
+				// 	} else {
+				// 		return 0
+				// 	}
+				// }(), tail(buf, 16), p1)
 			case reflect.Array:
 				size := rf.Len()
 
 				for i := 0; i < size; i++ {
 					rfi := rf.Index(i)
 					err = writer.WriteBits(rfi.Uint(), numBitsToWrite)
+					// p1, _ := writer.Pending()
+					// fmt.Printf("%4d:%-4d > Wrote %2d bits from %21s (%4s): %#02x | %x | %02x\n", bitIx, byteIx, numBitsToWrite, sf.Name, sf.Type, rfi.Uint(), tail(buf, 16), p1)
 					if err != nil {
 						break
 					}
 				}
 			case reflect.Struct:
 				err = writeBitstreamFromReflection(writer, rf.Type(), rf)
+				// fmt.Println(" >> Diving into ", sf.Name)
+				// err = writeBitstreamFromReflection(writer, rf.Type(), rf, buf)
+
 				if err != nil {
 					break
 				}
 			default:
 				err = errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 			}
+			// bitIx += numBitsToWrite
+			// byteIx = int(math.Ceil(float64(bitIx) / 8.0))
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
 		}
@@ -192,6 +224,7 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 		}
 		writer.WriteByte(byteRead)
 	}
+	// fmt.Printf(" >> Read %d bytes: %x\n", numBytesToRead, buf.Bytes())
 	return buf.Bytes(), nil
 }
 
@@ -204,3 +237,9 @@ func checksum8(payload []byte) byte {
 
 	return runningSum
 }
+
+// func tail(buf *bytes.Buffer, n int) []byte {
+// 	b := buf.Bytes()
+// 	start := max(0, len(b)-n)
+// 	return b[start:]
+// }
