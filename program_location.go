@@ -29,3 +29,12 @@ func (progLoc *ProgramLocation) Summary() string {
 func (progLoc *ProgramLocation) Version() float64 {
 	return progLoc.version
 }
+
+func (progLoc *ProgramLocation) PrintContents(depth int) {
+	if progLoc == nil {
+		fmt.Println(strUninitializedName)
+	}
+	fmt.Printf("Printing %16q (%1.2f) {\n", progLoc.PrintableName(), progLoc.version)
+
+	printStruct(progLoc.program, depth)
+}
