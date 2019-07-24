@@ -231,47 +231,44 @@ func printStruct(s interface{}, depth int) {
 }
 
 func printReflectedStruct(rt reflect.Type, rv reflect.Value, indent int, depth int) {
-	strIndent := strings.Repeat(" ", indent*2)
 	nameWidth, typeWidth := maxFieldWidths(rt, rv)
 
 	for i := 0; i < rv.NumField(); i++ {
 		sf := rt.Field(i)
 		rf := rv.Field(i)
 
-		switch rf.Kind() {
-		case reflect.Int:
-			fmt.Printf("  %s%-*s (%*s): %02x\n", strIndent, nameWidth, sf.Name, typeWidth, sf.Type, rf.Int())
-		case reflect.Uint:
-			fmt.Printf("  %s%-*s (%*s): %02x\n", strIndent, nameWidth, sf.Name, typeWidth, sf.Type, rf.Uint())
-		case reflect.Bool:
-			fmt.Printf("  %s%-*s (%*s): %t\n", strIndent, nameWidth, sf.Name, typeWidth, sf.Type, rf.Bool())
-		case reflect.Array:
-			fmt.Printf("  %s%-*s (%*s): [", strIndent, nameWidth, sf.Name, typeWidth, sf.Type)
-			size := rf.Len()
-			strData := make([]string, 0)
-			charData := make([]string, 0)
-
-			for i := 0; i < size; i++ {
-				rfi := rf.Index(i)
-				strData = append(strData, fmt.Sprintf("%02x", rfi.Uint()))
-				charData = append(charData, fmt.Sprintf("%q", rfi.Uint()))
-			}
-			fmt.Printf("%s] : [", strings.Join(strData, " "))
-			fmt.Printf("%s]\n", strings.Join(charData, " "))
-		case reflect.Struct:
-			fmt.Printf("  %s%-*s (%s) {", strIndent, nameWidth, sf.Name, sf.Type)
-			newStruct := reflect.New(sf.Type)
-			if depth == 0 {
-				fmt.Printf(" <hidden: beyond depth> }\n")
-			} else {
-				fmt.Println("")
-				printReflectedStruct(newStruct.Elem().Type(), newStruct.Elem(), indent+1, depth-1)
-				fmt.Printf("  %s}\n", strIndent)
-			}
-		default:
-			fmt.Sprintf("  %s%-*s (%s): ** Unhandled type discovered: %v\n", strIndent, nameWidth, sf.Name, sf.Type, rf.Kind())
-		}
+		printReflectedField(sf, rf, indent, depth, nameWidth, typeWidth)
 	}
+}
+
+func printReflectedField(sf reflect.StructField, rf reflect.Value, indent int, depth int, nameWidth int, typeWidth int) {
+	strIndent := strings.Repeat(" ", indent*2)
+
+	fmt.Printf("  %s%-*s (%*s): ", strIndent, nameWidth, sf.Name, typeWidth, sf.Type)
+
+	switch rf.Kind() {
+	case reflect.Int:
+		fmt.Printf("%02x", rf.Int())
+	case reflect.Uint:
+		fmt.Printf("%02x", rf.Uint())
+	case reflect.Bool:
+		fmt.Printf("%t", rf.Bool())
+	case reflect.Array:
+		printArrayToString(rf)
+	case reflect.Struct:
+		fmt.Print(" {")
+		newStruct := reflect.New(sf.Type)
+		if depth == 0 {
+			fmt.Print(" <hidden: beyond depth> }")
+		} else {
+			fmt.Println("")
+			printReflectedStruct(newStruct.Elem().Type(), newStruct.Elem(), indent+1, depth-1)
+			fmt.Printf("  %s}", strIndent)
+		}
+	default:
+		fmt.Sprintf("** Unhandled type discovered: %v", rf.Kind())
+	}
+	fmt.Print("\n")
 }
 
 func maxFieldWidths(rt reflect.Type, rv reflect.Value) (nameWidth int, typeWidth int) {
@@ -294,8 +291,17 @@ func maxFieldWidths(rt reflect.Type, rv reflect.Value) (nameWidth int, typeWidth
 	return mw, tw
 }
 
-// func tail(buf *bytes.Buffer, n int) []byte {
-// 	b := buf.Bytes()
-// 	start := max(0, len(b)-n)
-// 	return b[start:]
-// }
+func printArrayToString(rv reflect.Value) {
+	fmt.Print("[")
+	size := rv.Len()
+	strData := make([]string, 0)
+	charData := make([]string, 0)
+
+	for i := 0; i < size; i++ {
+		rvi := rv.Index(i)
+		strData = append(strData, fmt.Sprintf("%02x", rvi.Uint()))
+		charData = append(charData, fmt.Sprintf("%q", rvi.Uint()))
+	}
+	fmt.Printf("%s] : [", strings.Join(strData, " "))
+	fmt.Printf("%s]\n", strings.Join(charData, " "))
+}

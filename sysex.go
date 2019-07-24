@@ -34,9 +34,19 @@ const (
 	ProgramBitstreamLength     = 191
 )
 
+var SysexHeader = []byte{0xF0, 0x33, 0x7F, 0x09}
+
 type Sysex struct {
 	rawSysex         []byte
 	decodedBitstream []byte
+}
+
+type sysexable interface {
+	sysexData() (*[]byte, error)
+	sysexType() uint8
+	sysexName() []byte
+	sysexCategory() uint8
+	sysexVersion() []byte
 }
 
 func (sysex *Sysex) bank() uint8 {
@@ -211,4 +221,27 @@ func packSysex(payload []byte) []byte {
 	}
 	writer.Flush(bitstream.Zero)
 	return buf.Bytes()
+}
+
+// Returns the given object as a complete sysex chunk, including F0/F7 terminators
+func toSysex(obj sysexable, bank uint8, location uint8) (*[]byte, error) {
+	buffer := bytes.NewBuffer(nil)
+
+	buffer.Write(SysexHeader)
+	buffer.Write([]byte{obj.sysexType(), bank, location})
+	buffer.Write(obj.sysexName())
+	buffer.WriteByte(obj.sysexCategory())
+	buffer.Write((*new([SpareHeaderLength]byte))[:])
+	buffer.Write(obj.sysexVersion())
+
+	payload, err := obj.sysexData()
+	if err != nil {
+		return nil, err
+	}
+	buffer.Write(*payload)
+
+	buffer.WriteByte(0xF7)
+
+	sysex := buffer.Bytes()
+	return &sysex, nil
 }

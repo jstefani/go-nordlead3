@@ -36,11 +36,12 @@ func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
 	err := memory.LoadFromSysex(sysex)
 	if err == nil {
 		t.Errorf("Expected error from invalid sysex")
+		return
 	}
 
-	_, err = memory.GetPerformance(validPerformanceBank, validPerformanceLocation)
+	_, err = memory.GetPerformance(invalidPerformanceBank, invalidPerformanceLocation)
 
-	if err != nil {
+	if err == nil {
 		t.Errorf("Loaded invalid performance into memory!")
 	}
 }
@@ -62,7 +63,7 @@ func TestLoadProgramFromSysex(t *testing.T) {
 	}
 
 	if program.PrintableName() != validProgramName {
-		t.Errorf("Did not correctly compute the program name.")
+		t.Errorf("Did not correctly compute the program name: Expected %q, Got %q", validProgramName, program.PrintableName())
 	}
 
 	if program.Version() != validProgramVersion {

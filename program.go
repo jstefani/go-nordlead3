@@ -6,7 +6,7 @@ import (
 
 // Cross-checked against what is actually sent by the unit, does not line up with documentation!
 // Valid only for v1.20 programs.
-type Program struct {
+type ProgramData struct {
 	Version_number        uint        `len:"16"`
 	Osc1_shape            uint        `len:"7" min:"0" max:"127"`
 	Osc2_coarse_pitch     uint        `len:"7" min:"0" max:"127"`
@@ -158,12 +158,12 @@ type MorphParams struct {
 	Output_level          int `len:"8" min:"-128" max:"127"`
 }
 
-func (program *Program) dumpSysex() (*[]byte, error) {
-	if program == nil {
+func (programData *ProgramData) dumpSysex() (*[]byte, error) {
+	if programData == nil {
 		return nil, errors.New("Cannot dump a blank program - no init values set!")
 	}
 
-	payload, err := bitstreamFromStruct(program)
+	payload, err := bitstreamFromStruct(programData)
 	if err != nil {
 		return nil, err
 	}
@@ -172,4 +172,11 @@ func (program *Program) dumpSysex() (*[]byte, error) {
 	packedPayload := packSysex(payload)
 
 	return &packedPayload, nil
+}
+
+// Requires a properly formatted bitstream decoded from NL3 sysex
+func newProgramFromBitstream(data []byte) (*ProgramData, error) {
+	programData := new(ProgramData)
+	err := populateStructFromBitstream(programData, data)
+	return programData, err
 }

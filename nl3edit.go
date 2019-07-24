@@ -63,13 +63,13 @@ func printContents(memory *nordlead3.PatchMemory, bank string, location string, 
 		if err == nil {
 			intDepth, err := strconv.Atoi(depth)
 			if err == nil {
-				performance, err := memory.GetPerformance(intBank, intLocation)
+				performance, err := memory.GetPerformance(uint8(intBank), uint8(intLocation))
 				if err == nil {
 					performance.PrintContents(intDepth)
 					return
 				}
 
-				program, err := memory.GetProgram(intBank, intLocation)
+				program, err := memory.GetProgram(uint8(intBank), uint8(intLocation))
 				if err == nil {
 					program.PrintContents(intDepth)
 					return

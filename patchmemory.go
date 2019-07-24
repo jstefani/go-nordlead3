@@ -2,7 +2,6 @@ package nordlead3
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,105 +15,51 @@ var Uninitialized = errors.New("That location is not initialized.")
 // The main object responsible for organizing programs and performances.
 
 type PatchMemory struct {
-	programs     [8][128]*ProgramLocation
-	performances [2][128]*PerformanceLocation
+	programs     [8][128]*Program
+	performances [2][128]*Performance
 }
 
 // Dumps a program as sysex in NL3 format
 func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
-	buffer := bytes.NewBuffer(nil)
-	programLocation := memory.programs[bank][location]
-	if programLocation == nil || programLocation.program == nil {
-		return nil, Uninitialized
-	}
-	program := programLocation.program
-
-	// assemble sysex prelude
-	buffer.WriteString(string([]byte{0xF0, 0x33, 0x7F, 0x09, ProgramFromMemory, bank, location}))
-	for i := 0; i < 16; i++ {
-		currByte := programLocation.name[i]
-		if uint8(currByte) < 128 {
-			buffer.WriteByte(currByte)
-		} else {
-			panic("Sysex values cannot exceed 127!")
-		}
-	}
-	buffer.WriteByte(programLocation.category)
-	buffer.Write((*new([SpareHeaderLength]byte))[:])
-
-	// Append version x 100 as uint16
-	versionX100 := uint16(programLocation.version * 100)
-	buffer.Write([]byte{byte(versionX100 >> 8), byte(versionX100)})
-
-	// concatenate program data
-	progPayload, err := program.dumpSysex()
+	program, err := memory.GetProgram(bank, location)
 	if err != nil {
 		return nil, err
 	}
-	buffer.Write(*progPayload)
 
-	// finally, bang on the trailing 0xF7
-	buffer.WriteByte(0xF7)
+	sysex, err := toSysex(program, bank, location)
+	if err != nil {
+		return nil, err
+	}
 
-	// grab the buffer
-	sysex := buffer.Bytes()
-
-	return &sysex, nil
+	return sysex, nil
 }
 
 // // Dumps a performance as sysex in NL3 format
 func (memory *PatchMemory) DumpPerformance(bank, location uint8) (*[]byte, error) {
-	buffer := bytes.NewBuffer(nil)
-	performanceLocation := memory.performances[bank][location]
-	if performanceLocation == nil || performanceLocation.performance == nil {
-		return nil, Uninitialized
-	}
-	performance := performanceLocation.performance
-
-	// assemble sysex prelude
-	buffer.WriteString(string([]byte{0xF0, 0x33, 0x7F, 0x09, PerformanceFromMemory, bank, location}))
-	for i := 0; i < 16; i++ {
-		currByte := performanceLocation.name[i]
-		if uint8(currByte) < 128 {
-			buffer.WriteByte(currByte)
-		} else {
-			panic("Sysex values cannot exceed 127!")
-		}
-	}
-	buffer.WriteByte(performanceLocation.category)
-	buffer.Write((*new([SpareHeaderLength]byte))[:])
-
-	// Append version x 100 as uint16
-	versionX100 := uint16(performanceLocation.version * 100)
-	buffer.Write([]byte{byte(versionX100 >> 8), byte(versionX100)})
-
-	// concatenate performance data
-	progPayload, err := performance.dumpSysex()
+	performance, err := memory.GetPerformance(bank, location)
 	if err != nil {
 		return nil, err
 	}
-	buffer.Write(*progPayload)
 
-	// finally, bang on the trailing 0xF7
-	buffer.WriteByte(0xF7)
+	sysex, err := toSysex(performance, bank, location)
+	if err != nil {
+		return nil, err
+	}
 
-	// grab the buffer
-	sysex := buffer.Bytes()
-
-	return &sysex, nil
+	return sysex, nil
 }
 
-func (memory *PatchMemory) GetPerformance(bank, location int) (*PerformanceLocation, error) {
+func (memory *PatchMemory) GetPerformance(bank, location uint8) (*Performance, error) {
 	loc := memory.performances[bank][location]
-	if loc == nil || loc.performance == nil {
+	if loc == nil || loc.data == nil {
 		return nil, Uninitialized
 	}
 	return loc, nil
 }
 
-func (memory *PatchMemory) GetProgram(bank, location int) (*ProgramLocation, error) {
+func (memory *PatchMemory) GetProgram(bank, location uint8) (*Program, error) {
 	loc := memory.programs[bank][location]
-	if loc == nil || loc.program == nil {
+	if loc == nil || loc.data == nil {
 		return nil, Uninitialized
 	}
 	return loc, nil
@@ -157,7 +102,7 @@ func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid
 			if err == io.EOF {
 				break
 			} else {
-				return 0, 0, err
+				return validFound, invalidFound, err
 			}
 		}
 
@@ -185,22 +130,22 @@ func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid
 }
 
 func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
-	performance, err := newPerformanceFromBitstream(sysex.decodedBitstream)
+	performanceData, err := newPerformanceFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		perfLocation := PerformanceLocation{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), performance: performance}
+		perfLocation := Performance{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: performanceData}
 		memory.performances[sysex.bank()][sysex.location()] = &perfLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
+		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else {
 		panic(err)
 	}
 }
 
 func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) {
-	program, err := newProgramFromBitstream(sysex.decodedBitstream)
+	programData, err := newProgramFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		programLocation := ProgramLocation{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), program: program}
+		programLocation := Program{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: programData}
 		memory.programs[sysex.bank()][sysex.location()] = &programLocation
-		fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
+		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else {
 		panic(err)
 	}
@@ -242,16 +187,4 @@ func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 	}
 
 	return strings.Join(result, "\n")
-}
-
-func newProgramFromBitstream(data []byte) (*Program, error) {
-	program := new(Program)
-	err := populateStructFromBitstream(program, data)
-	return program, err
-}
-
-func newPerformanceFromBitstream(data []byte) (*Performance, error) {
-	performance := new(Performance)
-	err := populateStructFromBitstream(performance, data)
-	return performance, err
 }

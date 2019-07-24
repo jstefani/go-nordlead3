@@ -17,9 +17,13 @@ func TestDumpPerformanceSysex(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
-	performance := memory.performances[validPerformanceBank][validPerformanceLocation].performance
 
-	outputSysex, err := performance.dumpSysex()
+	performance, err := memory.GetPerformance(validPerformanceBank, validPerformanceLocation)
+	if err != nil {
+		t.Errorf("Error retrieving performance: %q", err)
+	}
+
+	outputSysex, err := performance.data.dumpSysex()
 	if err != nil {
 		t.Errorf("Error dumping performance: %q", err)
 	}
@@ -27,8 +31,5 @@ func TestDumpPerformanceSysex(t *testing.T) {
 	// Compare the decoded data for easier debugging
 	decodedPS := unpackSysex(performanceSysex)
 	decodedOS := unpackSysex(*outputSysex)
-	location, explanation := LocationOfDifference(&decodedPS, &decodedOS)
-	if explanation != nil {
-		t.Errorf("Dumped sysex does not match input at offset %d (%d): %q", location, location*8, explanation)
-	}
+	BinaryExpectEqual(t, &decodedPS, &decodedOS)
 }

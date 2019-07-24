@@ -13,14 +13,16 @@ import (
 )
 
 const (
-	validPerformanceBank     = 1
-	validPerformanceLocation = 2
-	validPerformanceName     = "Orchestra     HN"
-	validPerformanceVersion  = 1.20
-	validProgramBank         = 3
-	validProgramLocation     = 4
-	validProgramName         = "BladeRun     ZON"
-	validProgramVersion      = 1.18
+	validPerformanceBank       = 1
+	validPerformanceLocation   = 2
+	invalidPerformanceBank     = 0
+	invalidPerformanceLocation = 1
+	validPerformanceName       = "Orchestra     HN"
+	validPerformanceVersion    = 1.20
+	validProgramBank           = 3
+	validProgramLocation       = 4
+	validProgramName           = "Blade run    ZON"
+	validProgramVersion        = 1.18
 )
 
 // If error is not nil, int holds location and error holds a regional comparison for debugging.
@@ -82,7 +84,7 @@ func InvalidProgramSysex(t *testing.T) []byte {
 func BinaryExpectEqual(t *testing.T, expected *[]byte, received *[]byte) {
 	location, explanation := LocationOfDifference(expected, received)
 	if explanation != nil {
-		fmt.Printf("Expected:  %x\n", expected)
+		fmt.Printf("Expected: %x\n", expected)
 		fmt.Printf("Received: %x\n", received)
 		t.Errorf("Dumped sysex does not match input at offset %d: %q", location, explanation)
 	}
