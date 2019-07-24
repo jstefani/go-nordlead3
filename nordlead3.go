@@ -203,55 +203,15 @@ func readArray(into reflect.Value, from *bitstream.BitReader, length int) error 
 }
 
 func readStruct(into reflect.Value, field reflect.StructField, from *bitstream.BitReader, length int, depth int) error {
-	newBStream, err := readUnaligned(from, length)
+	bitstream, err := readUnaligned(from, length)
 	if err == nil {
 		newStruct := reflect.New(field.Type)
-		bitstream := padFromTag(field, &newBStream)
-		bitstream = offsetFromTag(field, bitstream)
-		err = populateReflectedStructFromBitstream(newStruct.Elem().Type(), newStruct.Elem(), *bitstream, depth+1)
+		err = populateReflectedStructFromBitstream(newStruct.Elem().Type(), newStruct.Elem(), bitstream, depth+1)
 		if err == nil {
 			into.Set(newStruct.Elem())
 		}
 	}
 	return err
-}
-
-func padFromTag(field reflect.StructField, data *[]byte) *[]byte {
-	if strPad, ok := field.Tag.Lookup("padFront"); ok {
-		var frontPadding []byte
-		fmt.Sscanf(strPad, "%x", &frontPadding)
-		newData := append(frontPadding, *data...)
-		data = &newData
-	}
-	if strPad, ok := field.Tag.Lookup("padRear"); ok {
-		var rearPadding []byte
-		fmt.Sscanf(strPad, "%x", &rearPadding)
-		newData := append(*data, rearPadding...)
-		data = &newData
-	}
-
-	return data
-}
-
-func offsetFromTag(field reflect.StructField, data *[]byte) *[]byte {
-	if strOffH, ok := field.Tag.Lookup("offsetHead"); ok {
-		fmt.Printf("Found head offset: %s. Data was: %x\n", strOffH, data)
-		offsetLength, _ := strconv.Atoi(strOffH)
-		offset := make([]byte, offsetLength)
-		newData := append(offset, *data...)
-		data = &newData
-		fmt.Printf("Applied %d bytes of offset. Data is now: %x\n", offsetLength, data)
-	}
-	if strOffT, ok := field.Tag.Lookup("offsetTail"); ok {
-		fmt.Printf("Found tail offset: %s. Data was: %x\n", strOffT, data)
-		offsetLength, _ := strconv.Atoi(strOffT)
-		offset := make([]byte, offsetLength)
-		newData := append(*data, offset...)
-		data = &newData
-		fmt.Printf("Applied %d bytes of offset. Data is now: %x\n", offsetLength, data)
-	}
-
-	return data
 }
 
 func skipField(field reflect.StructField, depth int) bool {
