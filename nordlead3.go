@@ -3,10 +3,9 @@ package nordlead3
 /*
 TODO:
 
- - Figure out why the heck the fields aren't lining up exactly with the chord memory and the last 8... something's off.
-     - I think not even the morphs are lining up right, so check that too
  - Write a bunch of useful tests for the core methods
- - Try to figure out how categories are implemented
+ - Support differentiation of loading from slot and from memory (maybe add active slot concept?)
+ - Try to figure out how categories are implemented - decipher the enums
  - Create useful functions for manipulating memory:
      - Swap locations
      - Rename location
