@@ -12,6 +12,8 @@ type Program struct {
 	data     *ProgramData
 }
 
+// Print helpers ("Presentation")
+
 func (program *Program) PrintContents(depth int) {
 	if program == nil {
 		fmt.Println(strUninitializedName)

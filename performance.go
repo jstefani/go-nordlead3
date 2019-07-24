@@ -12,6 +12,8 @@ type Performance struct {
 	data     *PerformanceData
 }
 
+// Print helpers ("Presentation")
+
 func (performance *Performance) PrintableName() string {
 	if performance == nil {
 		return strUninitializedName

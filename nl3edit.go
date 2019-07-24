@@ -63,17 +63,19 @@ func printContents(memory *nordlead3.PatchMemory, bank string, location string, 
 		if err == nil {
 			intDepth, err := strconv.Atoi(depth)
 			if err == nil {
-				performance, err := memory.GetPerformance(uint8(intBank), uint8(intLocation))
+				performance, err := memory.GetPerformance(uint8(intBank-1), uint8(intLocation-1))
 				if err == nil {
 					performance.PrintContents(intDepth)
 					return
 				}
 
-				program, err := memory.GetProgram(uint8(intBank), uint8(intLocation))
+				program, err := memory.GetProgram(uint8(intBank-1), uint8(intLocation-1))
 				if err == nil {
 					program.PrintContents(intDepth)
 					return
 				}
+				fmt.Printf("Program or Performance %d:%d not found.\n", intBank, intLocation)
+				return
 			}
 		}
 	}

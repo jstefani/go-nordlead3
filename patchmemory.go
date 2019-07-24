@@ -135,6 +135,8 @@ func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
 		perfLocation := Performance{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: performanceData}
 		memory.performances[sysex.bank()][sysex.location()] = &perfLocation
 		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
+	} else if err == io.EOF {
+		fmt.Println("An EOF error occurred during import. The data may not have been in the expected format.")
 	} else {
 		panic(err)
 	}

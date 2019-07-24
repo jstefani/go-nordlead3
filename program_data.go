@@ -7,7 +7,7 @@ import (
 // Cross-checked against what is actually sent by the unit, does not line up with documentation!
 // Valid only for v1.20 programs.
 type ProgramData struct {
-	Version_number        uint        `len:"16"`
+	Version_number        uint        `len:"16" skipEmbedded:"true"`
 	Osc1_shape            uint        `len:"7" min:"0" max:"127"`
 	Osc2_coarse_pitch     uint        `len:"7" min:"0" max:"127"`
 	Osc2_fine_pitch       uint        `len:"7" min:"0" max:"127"`

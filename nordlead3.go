@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strconv"
 	"strings"
@@ -34,20 +35,25 @@ const (
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
 	// Use reflection to get each field in the struct and it's length, then read that into it
-
 	rt := reflect.TypeOf(i).Elem()
 	rv := reflect.ValueOf(i).Elem()
 
-	return populateReflectedStructFromBitstream(rt, rv, data)
+	return populateReflectedStructFromBitstream(rt, rv, data, 0)
 }
 
-func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte) error {
+func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte, depth int) error {
+	fmt.Printf("Populating %s with %x\n", rt.Name(), data)
+
 	reader := bitstream.NewReader(bytes.NewReader(data))
 	err := (error)(nil)
 
 	for i := 0; i < rt.NumField(); i++ {
 		sf := rt.Field(i) // Type of the StructField (for reading tags)
 		rf := rv.Field(i) // Value of the struct field (for setting value)
+
+		if skipField(sf, depth) {
+			continue
+		}
 
 		if strLen, ok := sf.Tag.Lookup("len"); ok {
 			numBitsToRead, _ := strconv.Atoi(strLen)
@@ -59,27 +65,18 @@ func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, dat
 			case reflect.Bool:
 				err = readBool(rf, reader)
 			case reflect.Array:
-				size := rf.Len()
-
-				for i := 0; i < size; i++ {
-					rfi := rf.Index(i)
-					err = readUint(rfi, reader, numBitsToRead)
-					if err != nil {
-						break
-					}
-				}
+				err = readArray(rf, reader, numBitsToRead)
 			case reflect.Struct:
-				newBStream, err := readUnaligned(reader, numBitsToRead)
-				if err == nil {
-					newStruct := reflect.New(sf.Type)
-					_ = populateReflectedStructFromBitstream(newStruct.Elem().Type(), newStruct.Elem(), newBStream)
-					rf.Set(newStruct.Elem())
-				}
+				err = readStruct(rf, sf, reader, numBitsToRead, depth)
 			default:
 				return errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 			}
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
+		}
+
+		if err == io.EOF {
+			err = errors.New(fmt.Sprintf("EOF parsing field %q in %q.", sf.Name, rt.Name()))
 		}
 
 		if err != nil {
@@ -98,22 +95,26 @@ func bitstreamFromStruct(i interface{}) ([]byte, error) {
 	writer := bitstream.NewWriter(buf)
 
 	// err := writeBitstreamFromReflection(writer, rt, rv, buf)
-	err := writeBitstreamFromReflection(writer, rt, rv)
+	err := writeBitstreamFromReflection(writer, rt, rv, 0)
 	writer.Flush(bitstream.Zero)
 	return buf.Bytes(), err
 }
 
 // func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value, buf *bytes.Buffer) error {
-func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value) error {
+func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value, depth int) error {
 	err := (error)(nil)
 
 	for i := 0; i < rt.NumField(); i++ {
 		sf := rt.Field(i) // Type of the StructField (for reading tags)
 		rf := rv.Field(i) // Value of the struct field (for reading actual value)
 
+		if skipField(sf, depth) {
+			continue
+		}
+
 		if strLen, ok := sf.Tag.Lookup("len"); ok {
 			numBitsToWrite, _ := strconv.Atoi(strLen)
-			err = writeReflectedType(writer, rf, numBitsToWrite)
+			err = writeReflectedType(writer, rf, numBitsToWrite, depth)
 		} else {
 			err = errors.New(fmt.Sprintf("Length for %s not specified, not sure how to proceed!", sf.Name))
 		}
@@ -126,7 +127,7 @@ func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, 
 	return err
 }
 
-func writeReflectedType(writer *bitstream.BitWriter, rf reflect.Value, numBitsToWrite int) error {
+func writeReflectedType(writer *bitstream.BitWriter, rf reflect.Value, numBitsToWrite int, depth int) error {
 	err := (error)(nil)
 
 	switch rf.Kind() {
@@ -147,7 +148,7 @@ func writeReflectedType(writer *bitstream.BitWriter, rf reflect.Value, numBitsTo
 			}
 		}
 	case reflect.Struct:
-		err = writeBitstreamFromReflection(writer, rf.Type(), rf)
+		err = writeBitstreamFromReflection(writer, rf.Type(), rf, depth+1)
 	default:
 		err = errors.New(fmt.Sprintf("Unhandled type discovered: %v\n", rf.Kind()))
 	}
@@ -187,6 +188,81 @@ func readInt(into reflect.Value, from *bitstream.BitReader, length int) error {
 	return nil
 }
 
+func readArray(into reflect.Value, from *bitstream.BitReader, length int) error {
+	size := into.Len()
+
+	for i := 0; i < size; i++ {
+		elem := into.Index(i)
+		err := readUint(elem, from, length)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func readStruct(into reflect.Value, field reflect.StructField, from *bitstream.BitReader, length int, depth int) error {
+	newBStream, err := readUnaligned(from, length)
+	if err == nil {
+		newStruct := reflect.New(field.Type)
+		bitstream := padFromTag(field, &newBStream)
+		bitstream = offsetFromTag(field, bitstream)
+		err = populateReflectedStructFromBitstream(newStruct.Elem().Type(), newStruct.Elem(), *bitstream, depth+1)
+		if err == nil {
+			into.Set(newStruct.Elem())
+		}
+	}
+	return err
+}
+
+func padFromTag(field reflect.StructField, data *[]byte) *[]byte {
+	if strPad, ok := field.Tag.Lookup("padFront"); ok {
+		var frontPadding []byte
+		fmt.Sscanf(strPad, "%x", &frontPadding)
+		newData := append(frontPadding, *data...)
+		data = &newData
+	}
+	if strPad, ok := field.Tag.Lookup("padRear"); ok {
+		var rearPadding []byte
+		fmt.Sscanf(strPad, "%x", &rearPadding)
+		newData := append(*data, rearPadding...)
+		data = &newData
+	}
+
+	return data
+}
+
+func offsetFromTag(field reflect.StructField, data *[]byte) *[]byte {
+	if strOffH, ok := field.Tag.Lookup("offsetHead"); ok {
+		fmt.Printf("Found head offset: %s. Data was: %x\n", strOffH, data)
+		offsetLength, _ := strconv.Atoi(strOffH)
+		offset := make([]byte, offsetLength)
+		newData := append(offset, *data...)
+		data = &newData
+		fmt.Printf("Applied %d bytes of offset. Data is now: %x\n", offsetLength, data)
+	}
+	if strOffT, ok := field.Tag.Lookup("offsetTail"); ok {
+		fmt.Printf("Found tail offset: %s. Data was: %x\n", strOffT, data)
+		offsetLength, _ := strconv.Atoi(strOffT)
+		offset := make([]byte, offsetLength)
+		newData := append(*data, offset...)
+		data = &newData
+		fmt.Printf("Applied %d bytes of offset. Data is now: %x\n", offsetLength, data)
+	}
+
+	return data
+}
+
+func skipField(field reflect.StructField, depth int) bool {
+	if _, ok := field.Tag.Lookup("skipEmbedded"); ok {
+		if depth > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	writer := bitstream.NewWriter(buf)
@@ -209,7 +285,7 @@ func readUnaligned(from *bitstream.BitReader, length int) ([]byte, error) {
 		writer.WriteBit(bit)
 	}
 	writer.Flush(bitstream.Zero)
-
+	// fmt.Printf(" >> Read %d bytes and %d bits (%d bits in total): %x\n", numBytesToRead, numTrailingBitsToRead, length, buf.Bytes())
 	return buf.Bytes(), nil
 }
 
@@ -248,9 +324,9 @@ func printReflectedField(sf reflect.StructField, rf reflect.Value, indent int, d
 
 	switch rf.Kind() {
 	case reflect.Int:
-		fmt.Printf("%02x", rf.Int())
+		fmt.Printf("%#02x / %d", rf.Int(), rf.Int())
 	case reflect.Uint:
-		fmt.Printf("%02x", rf.Uint())
+		fmt.Printf("%#02x / %d", rf.Uint(), rf.Uint())
 	case reflect.Bool:
 		fmt.Printf("%t", rf.Bool())
 	case reflect.Array:
@@ -262,7 +338,7 @@ func printReflectedField(sf reflect.StructField, rf reflect.Value, indent int, d
 			fmt.Print(" <hidden: beyond depth> }")
 		} else {
 			fmt.Println("")
-			printReflectedStruct(newStruct.Elem().Type(), newStruct.Elem(), indent+1, depth-1)
+			printReflectedStruct(newStruct.Elem().Type(), rf, indent+1, depth-1)
 			fmt.Printf("  %s}", strIndent)
 		}
 	default:
