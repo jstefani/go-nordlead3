@@ -55,10 +55,11 @@ type PerformanceData struct {
 	Patchname_slot_b     [16]byte    `len:"8"`
 	Patchname_slot_c     [16]byte    `len:"8"`
 	Patchname_slot_d     [16]byte    `len:"8"`
-	Patch_data_a         ProgramData `len:"1504"`
-	Patch_data_b         ProgramData `len:"1504"`
-	Patch_data_c         ProgramData `len:"1504"`
-	Patch_data_d         ProgramData `len:"1504"`
+	Patch_data_a         ProgramData `len:"1498"`
+	Patch_data_b         ProgramData `len:"1498"`
+	Patch_data_c         ProgramData `len:"1498"`
+	Patch_data_d         ProgramData `len:"1498"`
+	Spare16              uint        `len:"16"` // This is nuts, there's data there.
 	Checksum             uint        `len:"8"`
 }
 

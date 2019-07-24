@@ -42,7 +42,7 @@ func populateStructFromBitstream(i interface{}, data []byte) error {
 }
 
 func populateReflectedStructFromBitstream(rt reflect.Type, rv reflect.Value, data []byte, depth int) error {
-	fmt.Printf("Populating %s with %x\n", rt.Name(), data)
+	// fmt.Printf("Populating %s with %x\n", rt.Name(), data)
 
 	reader := bitstream.NewReader(bytes.NewReader(data))
 	err := (error)(nil)
