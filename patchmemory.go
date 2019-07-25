@@ -34,6 +34,36 @@ func (memory *PatchMemory) DumpProgram(bank, location uint8) (*[]byte, error) {
 	return sysex, nil
 }
 
+func (memory *PatchMemory) DumpPerformances() (*[]byte, error) {
+	var output []byte
+
+	for bank, performances := range memory.performances {
+		for location, _ := range performances {
+			perfdata, err := memory.DumpProgram(uint8(bank), uint8(location))
+			if err != nil {
+				return nil, err
+			}
+			output = append(output, *perfdata...)
+		}
+	}
+	return &output, nil
+}
+
+func (memory *PatchMemory) DumpPrograms() (*[]byte, error) {
+	var output []byte
+
+	for bank, programs := range memory.programs {
+		for location, _ := range programs {
+			programdata, err := memory.DumpProgram(uint8(bank), uint8(location))
+			if err != nil {
+				return nil, err
+			}
+			output = append(output, *programdata...)
+		}
+	}
+	return &output, nil
+}
+
 // // Dumps a performance as sysex in NL3 format
 func (memory *PatchMemory) DumpPerformance(bank, location uint8) (*[]byte, error) {
 	performance, err := memory.GetPerformance(bank, location)
