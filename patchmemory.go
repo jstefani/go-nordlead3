@@ -88,12 +88,8 @@ func (memory *PatchMemory) LoadFromSysex(rawSysex []byte) error {
 }
 
 func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid int, err error) {
-	defer file.Close()
-
 	validFound, invalidFound := 0, 0
 	reader := bufio.NewReader(file)
-
-	fmt.Println("Beginning parsing.")
 
 	for {
 		// scan until we see an F0, we hit EOF, or an error occurs.
@@ -125,15 +121,17 @@ func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid
 			}
 		}
 	}
-	fmt.Println("Finished parsing.")
 	return validFound, invalidFound, nil
 }
 
 func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
 	performanceData, err := newPerformanceFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		perfLocation := Performance{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: performanceData}
-		memory.performances[sysex.bank()][sysex.location()] = &perfLocation
+		performance := Performance{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: performanceData}
+		if existing, err := memory.GetPerformance(sysex.bank(), sysex.location()); err == nil {
+			fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+		}
+		memory.performances[sysex.bank()][sysex.location()] = &performance
 		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else if err == io.EOF {
 		fmt.Println("An EOF error occurred during import. The data may not have been in the expected format.")
@@ -145,8 +143,12 @@ func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
 func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) {
 	programData, err := newProgramFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		programLocation := Program{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: programData}
-		memory.programs[sysex.bank()][sysex.location()] = &programLocation
+		program := Program{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: programData}
+		// detect overwrite
+		if existing, err := memory.GetProgram(sysex.bank(), sysex.location()); err == nil {
+			fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+		}
+		memory.programs[sysex.bank()][sysex.location()] = &program
 		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
 	} else {
 		panic(err)
