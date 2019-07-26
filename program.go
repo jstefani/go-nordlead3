@@ -12,6 +12,34 @@ type Program struct {
 	data     *ProgramData
 }
 
+// Setters (TODO: could use interfaces (nameable, categorizable) to DRY this up too)
+
+func (program *Program) SetCategory(newCategory uint8) error {
+	if program == nil {
+		return ErrorUninitialized // can't set a category on an uninitialized program
+	}
+	if newCategory > 0x0D {
+		return ErrorInvalidCategory
+	}
+	program.category = newCategory
+	return nil
+}
+
+func (program *Program) SetName(newName string) error {
+	if program == nil {
+		return ErrorUninitialized // can't set a category on an uninitialized program
+	}
+
+	var byteName [16]byte
+
+	if len(newName) > 16 || len(newName) == 0 {
+		return ErrorInvalidName
+	}
+	copy(byteName[:], newName)
+	program.name = byteName
+	return nil
+}
+
 // Print helpers ("Presentation")
 
 func (program *Program) PrintContents(depth int) {
@@ -32,14 +60,14 @@ func (program *Program) PrintableCategory() string {
 
 func (program *Program) PrintableName() string {
 	if program == nil {
-		return "** Uninitialized"
+		return strUninitializedName
 	}
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(program.name[:]), "\x00"))
 }
 
 func (program *Program) Summary() string {
 	if program == nil {
-		return "** Uninitialized"
+		return strUninitializedName
 	}
 	return fmt.Sprintf("%+-16.16q : %8s (%1.2f)", program.PrintableName(), program.PrintableCategory(), program.version)
 }

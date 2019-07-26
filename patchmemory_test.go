@@ -1,6 +1,7 @@
 package nordlead3
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -105,4 +106,94 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 	}
 
 	BinaryExpectEqual(t, &inputSysex, outputSysex)
+}
+
+func TestMovePrograms(t *testing.T) {
+	var src []patchLocation
+	var quicksummary []string
+	var dest patchLocation
+	var err error
+	// populate a PatchMemory
+	memory := new(PatchMemory)
+	startPos := 42
+	numToMove := 27
+
+	helperLoadFromFile(t, memory, "ProgBank1.syx")
+
+	for i := startPos; i < startPos+numToMove; i++ {
+		orig, err := memory.GetProgram(0, uint8(i))
+		if err != nil {
+			quicksummary = append(quicksummary, "")
+			continue // ignore uninitialized patches in move block
+		}
+		src = append(src, patchLocation{patchProgram, 0, uint8(i)})
+		quicksummary = append(quicksummary, fmt.Sprintf("%s:%s:%f", orig.PrintableName(), orig.PrintableCategory(), orig.Version()))
+	}
+	if len(src) < 10 {
+		t.Errorf("Test range does not contain a sufficient quantity of initialized patches.")
+		return
+	}
+
+	// Test successful moving to bank 2, same startPos
+	dest = patchLocation{patchProgram, 1, uint8(startPos)}
+	err = memory.move(src, dest)
+	if err != nil {
+		t.Fatalf("Failure moving patches: %s", err)
+	}
+	for i := startPos; i < startPos+numToMove; i++ {
+		_, err = memory.GetProgram(0, uint8(i))
+		if err != ErrorUninitialized {
+			t.Fatalf("Move left original location %d:%d initialized", 0, i)
+		}
+		moved, _ := memory.GetProgram(1, uint8(i))
+		msum := fmt.Sprintf("%s:%s:%f", moved.PrintableName(), moved.PrintableCategory(), moved.Version())
+		if msum != quicksummary[i-startPos] {
+			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
+		}
+	}
+}
+
+func TestMovePerformances(t *testing.T) {
+	var src []patchLocation
+	var quicksummary []string
+	var dest patchLocation
+	var err error
+	// populate a PatchMemory
+	memory := new(PatchMemory)
+	startPos := 42
+	numToMove := 27
+
+	helperLoadFromFile(t, memory, "PerfBank1.syx")
+
+	for i := startPos; i < startPos+numToMove; i++ {
+		orig, err := memory.GetPerformance(0, uint8(i))
+		if err != nil {
+			quicksummary = append(quicksummary, "")
+			continue // ignore uninitialized patches in move block
+		}
+		src = append(src, patchLocation{patchPerformance, 0, uint8(i)})
+		quicksummary = append(quicksummary, fmt.Sprintf("%s:%f", orig.PrintableName(), orig.Version()))
+	}
+	if len(src) < 10 {
+		t.Errorf("Test range does not contain a sufficient quantity of initialized patches.")
+		return
+	}
+
+	// Test successful moving to bank 2, same startPos
+	dest = patchLocation{patchProgram, 1, uint8(startPos)}
+	err = memory.move(src, dest)
+	if err != nil {
+		t.Fatalf("Failure moving patches: %s", err)
+	}
+	for i := startPos; i < startPos+numToMove; i++ {
+		_, err = memory.GetProgram(0, uint8(i))
+		if err != ErrorUninitialized {
+			t.Fatalf("Move left original location %d:%d initialized", 0, i)
+		}
+		moved, _ := memory.GetPerformance(1, uint8(i))
+		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
+		if msum != quicksummary[i-startPos] {
+			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
+		}
+	}
 }

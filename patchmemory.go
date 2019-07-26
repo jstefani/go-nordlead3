@@ -9,14 +9,25 @@ import (
 	"strings"
 )
 
-var Uninitialized = errors.New("That location is not initialized.")
-
 // PatchMemory holds the entire internal structure of the patch memory, including locations, names, and patch contents.
 // The main object responsible for organizing programs and performances.
 
 type PatchMemory struct {
 	programs     [8][128]*Program
 	performances [2][128]*Performance
+}
+
+type patchType int
+
+const (
+	patchProgram = iota
+	patchPerformance
+)
+
+type patchLocation struct {
+	patchType patchType
+	bank      uint8
+	position  uint8
 }
 
 // Dumps a program as sysex in NL3 format
@@ -79,10 +90,93 @@ func (memory *PatchMemory) DumpPerformance(bank, location uint8) (*[]byte, error
 	return sysex, nil
 }
 
+// Accepts an array of patchLocations and exports them to the same file
+func (memory *PatchMemory) exportLocations(locations []patchLocation, filename string) error {
+	var (
+		exportdata []byte
+		err        error
+		fdata      *[]byte
+	)
+
+	for _, location := range locations {
+		switch location.patchType {
+		case patchProgram:
+			fdata, err = memory.DumpProgram(location.bank, location.position)
+		case patchPerformance:
+			fdata, err = memory.DumpPerformance(location.bank, location.position)
+		default:
+			// skip
+		}
+
+		if err == ErrorUninitialized {
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		exportdata = append(exportdata, *fdata...)
+	}
+
+	if len(exportdata) == 0 {
+		return ErrorNoDataToWrite
+	}
+	return exportToFile(&exportdata, filename, false)
+}
+
+func (memory *PatchMemory) ExportAllPerformances(filename string) error {
+	var locations []patchLocation
+
+	for bank, performances := range memory.performances {
+		for position, _ := range performances {
+			locations = append(locations, patchLocation{patchPerformance, uint8(bank), uint8(position)})
+		}
+	}
+	return memory.exportLocations(locations, filename)
+}
+
+func (memory *PatchMemory) ExportAllPrograms(filename string) error {
+	var locations []patchLocation
+
+	for bank, programs := range memory.programs {
+		for position, _ := range programs {
+			locations = append(locations, patchLocation{patchProgram, uint8(bank), uint8(position)})
+		}
+	}
+	return memory.exportLocations(locations, filename)
+}
+
+func (memory *PatchMemory) ExportPerformance(bank, location uint8, filename string) error {
+	locations := []patchLocation{patchLocation{patchPerformance, bank, location}}
+	return memory.exportLocations(locations, filename)
+}
+
+func (memory *PatchMemory) ExportPerformanceBank(bank uint8, filename string) error {
+	var locations []patchLocation
+
+	for location, _ := range memory.performances[bank] {
+		locations = append(locations, patchLocation{patchPerformance, bank, uint8(location)})
+	}
+	return memory.exportLocations(locations, filename)
+}
+
+func (memory *PatchMemory) ExportProgram(bank, location uint8, filename string) error {
+	locations := []patchLocation{patchLocation{patchProgram, bank, location}}
+	return memory.exportLocations(locations, filename)
+}
+
+func (memory *PatchMemory) ExportProgramBank(bank uint8, filename string) error {
+	var locations []patchLocation
+
+	for location, _ := range memory.programs[bank] {
+		locations = append(locations, patchLocation{patchProgram, bank, uint8(location)})
+	}
+	return memory.exportLocations(locations, filename)
+}
+
 func (memory *PatchMemory) GetPerformance(bank, location uint8) (*Performance, error) {
 	loc := memory.performances[bank][location]
 	if loc == nil || loc.data == nil {
-		return nil, Uninitialized
+		return nil, ErrorUninitialized
 	}
 	return loc, nil
 }
@@ -90,7 +184,7 @@ func (memory *PatchMemory) GetPerformance(bank, location uint8) (*Performance, e
 func (memory *PatchMemory) GetProgram(bank, location uint8) (*Program, error) {
 	loc := memory.programs[bank][location]
 	if loc == nil || loc.data == nil {
-		return nil, Uninitialized
+		return nil, ErrorUninitialized
 	}
 	return loc, nil
 }
@@ -185,6 +279,69 @@ func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) {
 	}
 }
 
+// returns an error if any of the len(src) locations following dest are not empty, or if src contains
+// patchLocations of different patchTypes
+// todo: could probably do this with a state concept in the patch memory too, but that's for later
+//       e.g. create a new patchmemory clone of the current one, start replacing, and if we hit a non-nil dest, abort
+//            if we don't, swap the new state for the old state as the current valid state of the memory.
+//            bonus is that we can store the old state as an undo point.
+func (memory *PatchMemory) move(src []patchLocation, dest patchLocation) error {
+	var err error
+	var moved []patchLocation
+	tloc := src[0].patchType
+
+	for i, _ := range src {
+		u := uint8(i)
+		if dest.position+u > 127 {
+			memory.move(moved, src[0]) // undo the ones moved so far
+			return errors.New("Not enough room in that bank")
+		}
+
+		currDest := patchLocation{tloc, dest.bank, dest.position + u}
+		switch tloc {
+		case patchPerformance:
+			err = memory.movePerformance(src[i], currDest)
+		case patchProgram:
+			err = memory.moveProgram(src[i], currDest)
+		}
+
+		if err != nil { // currDest was not overwritten
+			memory.move(moved, src[0])
+			return err
+		} else {
+			moved = append(moved, currDest)
+		}
+	}
+
+	return err
+}
+
+func (memory *PatchMemory) movePerformance(src patchLocation, dest patchLocation) error {
+	if src.patchType != patchPerformance || dest.patchType != patchPerformance {
+		return errors.New("Cannot move different types of patches")
+	}
+	_, err := memory.GetPerformance(dest.bank, dest.position)
+	if err != ErrorUninitialized {
+		return errors.New("Destination is not empty")
+	}
+	memory.performances[dest.bank][dest.position] = memory.performances[src.bank][src.position]
+	memory.performances[src.bank][src.position] = nil
+	return nil
+}
+
+func (memory *PatchMemory) moveProgram(src patchLocation, dest patchLocation) error {
+	if src.patchType != patchProgram || dest.patchType != patchProgram {
+		return errors.New("Cannot move different types of patches")
+	}
+	_, err := memory.GetProgram(dest.bank, dest.position)
+	if err != ErrorUninitialized {
+		return errors.New("Destination is not empty")
+	}
+	memory.programs[dest.bank][dest.position] = memory.programs[src.bank][src.position]
+	memory.programs[src.bank][src.position] = nil
+	return nil
+}
+
 func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 	var result []string
 
@@ -195,7 +352,7 @@ func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 
 		for location, program := range bank {
 			if program != nil || !omitBlank {
-				result = append(result, fmt.Sprintf("   %3d : %s", location, program.Summary()))
+				result = append(result, fmt.Sprintf("   %3d : %s", location+1, program.Summary()))
 			}
 		}
 
@@ -215,7 +372,7 @@ func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 
 		for location, performance := range bank {
 			if performance != nil || !omitBlank {
-				result = append(result, fmt.Sprintf("   %3d : %s", location, performance.Summary()))
+				result = append(result, fmt.Sprintf("   %3d : %s", location+1, performance.Summary()))
 			}
 		}
 	}

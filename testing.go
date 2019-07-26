@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -97,6 +98,16 @@ func helperLoadBytes(t *testing.T, name string) []byte {
 		t.Fatal(err)
 	}
 	return bytes
+}
+
+func helperLoadFromFile(t *testing.T, memory *PatchMemory, filename string) {
+	file, err := os.Open(filepath.Join("testdata", filename))
+	defer file.Close()
+
+	if err != nil {
+		t.Fatal(fmt.Printf("Could not open %q: %q\n", filename, err))
+	}
+	memory.LoadFromFile(file)
 }
 
 func tailBytes(buf []byte, n int) []byte {

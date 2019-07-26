@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -51,6 +52,32 @@ var Categories = [14]string{
 	"Synth",
 	"User1",
 	"User2", // 0x0D
+}
+
+var ErrorUninitialized = errors.New("That location is not initialized")
+var ErrorInvalidCategory = errors.New("Invalid category")
+var ErrorInvalidName = errors.New("Name cannot be blank nor exceed 16 characters.")
+var ErrorNoDataToWrite = errors.New("No data to write to file")
+
+func exportToFile(data *[]byte, filename string, overwrite bool) error {
+	_, err := os.Stat(filename)
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return err
+		}
+		if !overwrite {
+			return os.ErrExist
+		}
+	}
+
+	file, err := os.Create(filename)
+	fmt.Printf("Preparing %q\n", filename)
+	if err != nil {
+		return err
+	}
+
+	_, err = file.Write(*data)
+	return err
 }
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
