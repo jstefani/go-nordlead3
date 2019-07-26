@@ -23,6 +23,13 @@ func (program *Program) PrintContents(depth int) {
 	printStruct(program.data, depth)
 }
 
+func (program *Program) PrintableCategory() string {
+	if program == nil {
+		return ""
+	}
+	return Categories[program.category]
+}
+
 func (program *Program) PrintableName() string {
 	if program == nil {
 		return "** Uninitialized"
@@ -34,7 +41,7 @@ func (program *Program) Summary() string {
 	if program == nil {
 		return "** Uninitialized"
 	}
-	return fmt.Sprintf("%+-16.16q (%1.2f)", program.PrintableName(), program.version)
+	return fmt.Sprintf("%+-16.16q : %8s (%1.2f)", program.PrintableName(), program.PrintableCategory(), program.version)
 }
 
 func (program *Program) Version() float64 {

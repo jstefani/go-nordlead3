@@ -3,8 +3,11 @@ package nordlead3
 /*
 TODO:
 
+ - Add ability to export a program or performance (or all programs, all performances, or just one bank of either) to a file
  - Write a bunch of useful tests for the core methods
+     - Test that the dump batches successfully produce the same bulk data as the bulk imports
  - Support differentiation of loading from slot and from memory (maybe add active slot concept?)
+     - Add active slots (0-3)
  - Try to figure out how categories are implemented - decipher the enums
  - Create useful functions for manipulating memory:
      - Swap locations
@@ -31,6 +34,24 @@ import (
 const (
 	strUninitializedName = "** Uninitialized"
 )
+
+// Position is also the sysex category value as a uint16 (0x00 to 0x0D)
+var Categories = [14]string{
+	"Acoustic", // 0x00
+	"Arpeggio", // 0x01
+	"Bass",     // ...
+	"Classic",
+	"Drum",
+	"Fantasy",
+	"FX",
+	"Lead",
+	"Organ",
+	"Pad",
+	"Piano",
+	"Synth",
+	"User1",
+	"User2", // 0x0D
+}
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
 	// Use reflection to get each field in the struct and it's length, then read that into it
@@ -93,13 +114,11 @@ func bitstreamFromStruct(i interface{}) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	writer := bitstream.NewWriter(buf)
 
-	// err := writeBitstreamFromReflection(writer, rt, rv, buf)
 	err := writeBitstreamFromReflection(writer, rt, rv, 0)
 	writer.Flush(bitstream.Zero)
 	return buf.Bytes(), err
 }
 
-// func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value, buf *bytes.Buffer) error {
 func writeBitstreamFromReflection(writer *bitstream.BitWriter, rt reflect.Type, rv reflect.Value, depth int) error {
 	err := (error)(nil)
 
