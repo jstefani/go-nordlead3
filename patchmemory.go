@@ -9,9 +9,6 @@ import (
 	"strings"
 )
 
-// PatchMemory holds the entire internal structure of the patch memory, including locations, names, and patch contents.
-// The main object responsible for organizing programs and performances.
-
 const (
 	programT = iota
 	performanceT
@@ -45,6 +42,18 @@ func (ref *patchRef) location() int {
 
 func (ref *patchRef) valid() bool {
 	return valid(ref.patchType, ref.index)
+}
+
+func (memory *PatchMemory) DeletePerformance(bank, location int) {
+	if memory.initialized(performanceT, index(bank, location)) {
+		memory.performances[index(bank, location)] = nil
+	}
+}
+
+func (memory *PatchMemory) DeleteProgram(bank, location int) {
+	if memory.initialized(programT, index(bank, location)) {
+		memory.programs[index(bank, location)] = nil
+	}
 }
 
 // Dumps a program as sysex in NL3 format
@@ -306,18 +315,18 @@ func (memory *PatchMemory) move(src []patchRef, dest patchRef) error {
 
 	refT := src[0].patchType
 
-	for i, _ := range src {
+	for i, currSrc := range src {
 		if !valid(refT, dest.index+i) {
 			memory.move(moved, src[0]) // undo the ones moved so far
-			return errors.New("Not enough room in that bank")
+			return ErrorMemoryOverflow
 		}
 
 		currDest := patchRef{refT, dest.index + i}
 		switch refT {
 		case performanceT:
-			err = memory.movePerformance(src[i], currDest)
+			err = memory.movePerformance(currSrc, currDest)
 		case programT:
-			err = memory.moveProgram(src[i], currDest)
+			err = memory.moveProgram(currSrc, currDest)
 		}
 
 		if err != nil { // currDest was not overwritten
@@ -337,7 +346,7 @@ func (memory *PatchMemory) movePerformance(src patchRef, dest patchRef) error {
 	}
 	_, err := memory.GetPerformance(dest.bank(), dest.location())
 	if err != ErrorUninitialized {
-		return errors.New("Destination is not empty")
+		return ErrorMemoryOccupied
 	}
 	memory.performances[dest.index] = memory.performances[src.index]
 	memory.performances[src.index] = nil
@@ -350,23 +359,42 @@ func (memory *PatchMemory) moveProgram(src patchRef, dest patchRef) error {
 	}
 	_, err := memory.GetProgram(dest.bank(), dest.location())
 	if err != ErrorUninitialized {
-		return errors.New("Destination is not empty")
+		return ErrorMemoryOccupied
 	}
 	memory.programs[dest.index] = memory.programs[src.index]
 	memory.programs[src.index] = nil
 	return nil
 }
 
+func (memory *PatchMemory) MovePerformance(srcBank, srcLoc, destBank, destLoc int) error {
+	src := patchRef{performanceT, index(srcBank, srcLoc)}
+	dst := patchRef{performanceT, index(destBank, destLoc)}
+
+	return memory.movePerformance(src, dst)
+}
+
+func (memory *PatchMemory) MoveProgram(srcBank, srcLoc, destBank, destLoc int) error {
+	src := patchRef{programT, index(srcBank, srcLoc)}
+	dst := patchRef{programT, index(destBank, destLoc)}
+
+	return memory.moveProgram(src, dst)
+}
+
 func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 	var result []string
+	currBank := -1 // won't match any bank
 
 	result = append(result, "\n***** PROGRAMS ******\n")
 	for i, program := range memory.programs {
 		bank, location := bankloc(i)
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-		result = append(result, bank_header)
 
 		if memory.initialized(programT, i) || !omitBlank {
+			if bank != currBank {
+				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+				result = append(result, bank_header)
+				currBank = bank
+			}
+
 			result = append(result, fmt.Sprintf("   %3d : %s", location+1, program.Summary()))
 		}
 	}
@@ -376,15 +404,20 @@ func (memory *PatchMemory) PrintPrograms(omitBlank bool) string {
 
 func (memory *PatchMemory) PrintPerformances(omitBlank bool) string {
 	var result []string
+	currBank := -1 // won't match any bank
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
 
 	for i, perf := range memory.performances {
 		bank, location := bankloc(i)
-		bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-		result = append(result, bank_header)
 
 		if memory.initialized(performanceT, i) || !omitBlank {
+			if bank != currBank {
+				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
+				result = append(result, bank_header)
+				currBank = bank
+			}
+
 			result = append(result, fmt.Sprintf("   %3d : %s", location+1, perf.Summary()))
 		}
 	}

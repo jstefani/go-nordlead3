@@ -54,10 +54,14 @@ var Categories = [14]string{
 	"User2", // 0x0D
 }
 
-var ErrorUninitialized = errors.New("That location is not initialized")
-var ErrorInvalidCategory = errors.New("Invalid category")
-var ErrorInvalidName = errors.New("Name cannot be blank nor exceed 16 characters.")
-var ErrorNoDataToWrite = errors.New("No data to write to file")
+var (
+	ErrorUninitialized   = errors.New("That location is not initialized")
+	ErrorInvalidCategory = errors.New("Invalid category")
+	ErrorInvalidName     = errors.New("Name cannot be blank nor exceed 16 characters")
+	ErrorMemoryOccupied  = errors.New("One or more destination memory locations are not blank")
+	ErrorMemoryOverflow  = errors.New("Not enough room in that bank")
+	ErrorNoDataToWrite   = errors.New("No data to write to file")
+)
 
 func exportToFile(data *[]byte, filename string, overwrite bool) error {
 	_, err := os.Stat(filename)
