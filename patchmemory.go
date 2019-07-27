@@ -12,13 +12,6 @@ import (
 // PatchMemory holds the entire internal structure of the patch memory, including locations, names, and patch contents.
 // The main object responsible for organizing programs and performances.
 
-type PatchMemory struct {
-	programs     [8 * 128]*Program
-	performances [2 * 128]*Performance
-}
-
-type patchType int
-
 const (
 	programT = iota
 	performanceT
@@ -29,6 +22,13 @@ const (
 	numPerfBanks = 2
 	numProgBanks = 8
 )
+
+type PatchMemory struct {
+	programs     [numProgBanks * bankSize]*Program
+	performances [numPerfBanks * bankSize]*Performance
+}
+
+type patchType int
 
 type patchRef struct {
 	patchType patchType
