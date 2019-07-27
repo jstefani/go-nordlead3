@@ -49,8 +49,8 @@ type sysexable interface {
 	sysexVersion() []byte
 }
 
-func (sysex *Sysex) bank() uint8 {
-	return sysex.rawSysex[4]
+func (sysex *Sysex) bank() int {
+	return int(sysex.rawSysex[4])
 }
 
 func (sysex *Sysex) decodeBitstream() {
@@ -61,8 +61,8 @@ func (sysex *Sysex) rawBitstream() []byte {
 	return sysex.rawSysex[PatchDataOffset:]
 }
 
-func (sysex *Sysex) location() uint8 {
-	return sysex.rawSysex[5]
+func (sysex *Sysex) location() int {
+	return int(sysex.rawSysex[5])
 }
 
 func (sysex *Sysex) checksum() uint8 {
@@ -224,11 +224,11 @@ func packSysex(payload []byte) []byte {
 }
 
 // Returns the given object as a complete sysex chunk, including F0/F7 terminators
-func toSysex(obj sysexable, bank uint8, location uint8) (*[]byte, error) {
+func toSysex(obj sysexable, bank int, location int) (*[]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 
 	buffer.Write(SysexHeader)
-	buffer.Write([]byte{obj.sysexType(), bank, location})
+	buffer.Write([]byte{obj.sysexType(), uint8(bank), uint8(location)})
 	buffer.Write(obj.sysexName())
 	buffer.WriteByte(obj.sysexCategory())
 	buffer.Write((*new([SpareHeaderLength]byte))[:])
