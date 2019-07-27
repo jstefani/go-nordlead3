@@ -3,19 +3,17 @@ package nordlead3
 /*
 TODO:
 
- - Add ability to export a program or performance (or all programs, all performances, or just one bank of either) to a file
+ - Find an interface abstraction that lets you do away with the custom behaviours for program/performance as much as possible
+     - memory.get needs to be able to return one of these, perhaps "patch" or "patchable"?
+ - Be able to print and dump the slot content
+ - Expand slot concept to nl3edit too (move, rename, delete)
  - Write a bunch of useful tests for the core methods
-     - Test that the dump batches successfully produce the same bulk data as the bulk imports
- - Support differentiation of loading from slot and from memory (maybe add active slot concept?)
-     - Add active slots (0-3)
- - Try to figure out how categories are implemented - decipher the enums
+     - Test the move to/from slot methods
+     - Test the delete methods
+ - Re-implement move as a copy and a delete, creating copy method as well.
  - Create useful functions for manipulating memory:
-     - Swap locations
-     - Rename location
-     - Copy from one location to another (destination must be empty)
-     - Delete a location entirely (makes destination empty)
+     - Swap locations (separate from copy/move)
      - Insert a location (move following locations down until an empty location is hit, or return an error if there's no room)
-     - Fancy stuff: move any subset of locations (e.g. an array of tuples (bank, location)) to a consecutive block of empty destinations (e.g. (bank, location) where the first one goes)
  - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
 */
 

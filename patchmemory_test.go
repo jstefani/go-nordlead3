@@ -116,6 +116,7 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 	}
 }
 
+// TODO: This is a mess, clean it up!
 func TestMovePrograms(t *testing.T) {
 	var src []patchRef
 	var quicksummary []string
@@ -177,6 +178,7 @@ func TestMovePrograms(t *testing.T) {
 	}
 }
 
+// TODO: This is a mess, clean it up!
 func TestMovePerformances(t *testing.T) {
 	var src []patchRef
 	var quicksummary []string
@@ -240,6 +242,7 @@ func TestMovePerformances(t *testing.T) {
 	}
 }
 
+// TODO: This is a mess, clean it up!
 func buildSrcList(t *testing.T, memory *PatchMemory, pt patchType, startBank, startLocation, numToMove int) (refs []patchRef, summaries []string) {
 	var err error
 	var oprog *Program

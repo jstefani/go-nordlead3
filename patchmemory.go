@@ -12,6 +12,8 @@ import (
 const (
 	programT = iota
 	performanceT
+	slotProgramT
+	slotPerformanceT
 )
 
 const (
@@ -21,8 +23,10 @@ const (
 )
 
 type PatchMemory struct {
-	programs     [numProgBanks * bankSize]*Program
-	performances [numPerfBanks * bankSize]*Performance
+	performances    [numPerfBanks * bankSize]*Performance
+	programs        [numProgBanks * bankSize]*Program
+	slotPerformance *Performance
+	slotPrograms    [4]*Program
 }
 
 type patchType int
@@ -131,7 +135,7 @@ func (memory *PatchMemory) exportLocations(refs []patchRef, filename string) err
 		}
 
 		if err == ErrorUninitialized {
-			continue
+			continue // skip silently
 		} else if err != nil {
 			return err
 		}
@@ -200,10 +204,26 @@ func (memory *PatchMemory) GetPerformance(bank, location int) (*Performance, err
 	return nil, ErrorUninitialized
 }
 
+func (memory *PatchMemory) GetSlotPerformance() (*Performance, error) {
+	if memory.initialized(slotPerformanceT, 0) {
+		return memory.slotPerformance, nil
+	}
+	return nil, ErrorUninitialized
+}
+
 func (memory *PatchMemory) GetProgram(bank, location int) (*Program, error) {
 	if index, valid := indexv(programT, bank, location); valid {
 		if memory.initialized(programT, index) {
 			return memory.programs[index], nil
+		}
+	}
+	return nil, ErrorUninitialized
+}
+
+func (memory *PatchMemory) GetSlotProgram(slot int) (*Program, error) {
+	if slot > 0 && slot < len(memory.slotPrograms) {
+		if memory.initialized(slotProgramT, slot) {
+			return memory.slotPrograms[slot], nil
 		}
 	}
 	return nil, ErrorUninitialized
@@ -235,6 +255,7 @@ func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid
 	validFound, invalidFound := 0, 0
 	reader := bufio.NewReader(file)
 
+	// TODO: Refactor this as a scanner break function and scan the string elegantly
 	for {
 		// scan until we see an F0, we hit EOF, or an error occurs.
 		_, err := reader.ReadBytes(SYSEX_START)
@@ -268,35 +289,55 @@ func (memory *PatchMemory) LoadFromFile(file *os.File) (numValid int, numInvalid
 	return validFound, invalidFound, nil
 }
 
-func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) {
+func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) error {
 	performanceData, err := newPerformanceFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		performance := Performance{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: performanceData}
-		if existing, err := memory.GetPerformance(sysex.bank(), sysex.location()); err == nil {
-			fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+		performance := Performance{
+			name:     sysex.nameAsArray(),
+			category: sysex.category(),
+			version:  sysex.version(),
+			data:     performanceData,
 		}
-		memory.performances[index(sysex.bank(), sysex.location())] = &performance
+
+		if sysex.messageType() == PerformanceFromSlot {
+			if existing, err := memory.GetSlotPerformance(); err == nil {
+				fmt.Printf("Overwriting slot performance %q with %q\n", existing.PrintableName(), sysex.printableName())
+			}
+			memory.slotPerformance = &performance
+		} else {
+			if existing, err := memory.GetPerformance(sysex.bank(), sysex.location()); err == nil {
+				fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+			}
+			memory.performances[index(sysex.bank(), sysex.location())] = &performance
+		}
 		// fmt.Printf("Loaded %s: (%v:%03d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
-	} else if err == io.EOF {
-		fmt.Println("An EOF error occurred during import. The data may not have been in the expected format.")
-	} else {
-		panic(err)
 	}
+	return err
 }
 
-func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) {
+func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) error {
 	programData, err := newProgramFromBitstream(sysex.decodedBitstream)
 	if err == nil {
-		program := Program{name: sysex.nameAsArray(), category: sysex.category(), version: sysex.version(), data: programData}
-		// detect overwrite
-		if existing, err := memory.GetProgram(sysex.bank(), sysex.location()); err == nil {
-			fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+		program := Program{
+			name:     sysex.nameAsArray(),
+			category: sysex.category(),
+			version:  sysex.version(),
+			data:     programData,
 		}
-		memory.programs[index(sysex.bank(), sysex.location())] = &program
+		if sysex.messageType() == ProgramFromSlot {
+			if existing, err := memory.GetSlotProgram(sysex.bank()); err == nil {
+				fmt.Printf("Overwriting slot %d %q with %q\n", sysex.bank(), existing.PrintableName(), sysex.printableName())
+			}
+			memory.slotPrograms[sysex.bank()] = &program
+		} else {
+			if existing, err := memory.GetProgram(sysex.bank(), sysex.location()); err == nil {
+				fmt.Printf("Overwriting %d:%d %q with %q\n", sysex.bank(), sysex.location(), existing.PrintableName(), sysex.printableName())
+			}
+			memory.programs[index(sysex.bank(), sysex.location())] = &program
+		}
 		// fmt.Printf("Loaded %s: (%v:%03d - %d) %-16.16q v%1.2f c%02x cs%02x\n", sysex.printableType(), sysex.bank(), sysex.location(), index(sysex.bank(), sysex.location()), sysex.printableName(), sysex.version(), sysex.category(), sysex.checksum())
-	} else {
-		panic(err)
 	}
+	return err
 }
 
 // returns an error if any of the len(src) locations following dest are not empty, or if src contains
@@ -323,9 +364,9 @@ func (memory *PatchMemory) move(src []patchRef, dest patchRef) error {
 
 		currDest := patchRef{refT, dest.index + i}
 		switch refT {
-		case performanceT:
+		case performanceT, slotPerformanceT:
 			err = memory.movePerformance(currSrc, currDest)
-		case programT:
+		case programT, slotProgramT:
 			err = memory.moveProgram(currSrc, currDest)
 		}
 
@@ -341,28 +382,64 @@ func (memory *PatchMemory) move(src []patchRef, dest patchRef) error {
 }
 
 func (memory *PatchMemory) movePerformance(src patchRef, dest patchRef) error {
-	if src.patchType != performanceT || dest.patchType != performanceT {
+	var source **Performance
+	var destination **Performance
+
+	switch src.patchType {
+	case performanceT:
+		source = &memory.performances[src.index]
+	case slotPerformanceT:
+		source = &memory.slotPerformance
+	default:
 		return errors.New("Cannot move different types of patches")
 	}
-	_, err := memory.GetPerformance(dest.bank(), dest.location())
-	if err != ErrorUninitialized {
+
+	switch dest.patchType {
+	case performanceT:
+		destination = &memory.performances[dest.index]
+	case slotPerformanceT:
+		destination = &memory.slotPerformance
+	default:
+		return errors.New("Cannot move different types of patches")
+	}
+
+	if *destination != nil {
 		return ErrorMemoryOccupied
 	}
-	memory.performances[dest.index] = memory.performances[src.index]
-	memory.performances[src.index] = nil
+	*destination = *source
+	*source = nil
+
 	return nil
 }
 
 func (memory *PatchMemory) moveProgram(src patchRef, dest patchRef) error {
-	if src.patchType != programT || dest.patchType != programT {
+	var source **Program
+	var destination **Program
+
+	switch src.patchType {
+	case programT:
+		source = &memory.programs[src.index]
+	case slotProgramT:
+		source = &memory.slotPrograms[src.index]
+	default:
 		return errors.New("Cannot move different types of patches")
 	}
-	_, err := memory.GetProgram(dest.bank(), dest.location())
-	if err != ErrorUninitialized {
+
+	switch dest.patchType {
+	case programT:
+		destination = &memory.programs[dest.index]
+	case slotProgramT:
+		destination = &memory.slotPrograms[dest.index]
+	default:
+		return errors.New("Cannot move different types of patches")
+	}
+
+	if *destination != nil {
 		return ErrorMemoryOccupied
 	}
-	memory.programs[dest.index] = memory.programs[src.index]
-	memory.programs[src.index] = nil
+	*destination = *source
+	*source = nil
+
 	return nil
 }
 
@@ -477,8 +554,12 @@ func (memory *PatchMemory) initialized(pt patchType, index int) (result bool) {
 	switch pt {
 	case performanceT:
 		result = memory.performances[index] != nil
+	case slotPerformanceT:
+		result = memory.slotPerformance != nil
 	case programT:
 		result = memory.programs[index] != nil
+	case slotProgramT:
+		result = memory.slotPrograms[index] != nil
 	default:
 		result = false
 	}
