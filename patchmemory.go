@@ -372,13 +372,15 @@ func (memory *PatchMemory) set(ref patchRef, patch patch) error {
 	return err
 }
 
-// Panics if locations are invalid
 func (memory *PatchMemory) swap(src patchRef, dest patchRef) error {
 	if src.patchType != dest.patchType {
 		return ErrXferTypeMismatch
 	}
 	if src.source != dest.source {
 		return ErrXferTypeMismatch // Don't support swapping to/from a slot, should be a copy or move.
+	}
+	if !src.valid() || !dest.valid() {
+		return ErrInvalidLocation
 	}
 
 	switch src.patchType {

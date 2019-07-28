@@ -118,7 +118,6 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 }
 
 func TestMovePrograms(t *testing.T) {
-	// populate a PatchMemory
 	memory := populatedMemory(t, "ProgBank1.syx")
 	startLoc := 42
 	numToMove := 27
@@ -141,7 +140,6 @@ func TestMovePrograms(t *testing.T) {
 }
 
 func TestMovePerformances(t *testing.T) {
-	// populate a PatchMemory
 	memory := populatedMemory(t, "PerfBank1.syx")
 	startBank := 0
 	startLoc := 42
@@ -163,6 +161,75 @@ func TestMovePerformances(t *testing.T) {
 	dest = patchRef{PerformanceT, MemoryT, index(destBank, startLoc+numToMove-1)}
 	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOccupied, moveM)
 }
+
+func TestSwapPerformances(t *testing.T) {
+	memory := populatedMemory(t, "PerfBank1.syx")
+
+	// A. Test swap of two occupied regions
+	a := patchRef{PerformanceT, MemoryT, index(0, 42)}
+	b := patchRef{PerformanceT, MemoryT, index(0, 43)}
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// B. Test swap of an occupied region to an unoccupied region
+	a = patchRef{PerformanceT, MemoryT, index(0, 42)}
+	b = patchRef{PerformanceT, MemoryT, index(1, 42)}
+	requireUninitialized(t, memory, b)
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// C. Test the converse of B, now that they are reversed
+	a = patchRef{PerformanceT, MemoryT, index(0, 42)}
+	b = patchRef{PerformanceT, MemoryT, index(1, 42)}
+	requireUninitialized(t, memory, a)
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// D. Test error handling when a swap is requested between the wrong types
+	a = patchRef{PerformanceT, MemoryT, index(0, 42)}
+	b = patchRef{ProgramT, MemoryT, index(1, 42)}
+	expectUnsuccessfulSwap(t, memory, a, b, ErrXferTypeMismatch)
+
+	// E. Test error handling when a swap is requested from an invalid location
+	a = patchRef{PerformanceT, MemoryT, index(numPerfBanks, 42)}
+	b = patchRef{PerformanceT, MemoryT, index(1, 42)}
+	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
+
+	// F. Test error handling whan a swap is requested to an invalid location
+	a = patchRef{PerformanceT, MemoryT, index(1, 42)}
+	b = patchRef{PerformanceT, MemoryT, index(numPerfBanks, 42)}
+	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
+}
+
+func TestSwapPrograms(t *testing.T) {
+	memory := populatedMemory(t, "ProgBank1.syx")
+
+	// A. Test swap of two occupied regions
+	a := patchRef{ProgramT, MemoryT, index(0, 42)}
+	b := patchRef{ProgramT, MemoryT, index(0, 43)}
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// B. Test swap of an occupied region to an unoccupied region
+	a = patchRef{ProgramT, MemoryT, index(0, 42)}
+	b = patchRef{ProgramT, MemoryT, index(1, 42)}
+	requireUninitialized(t, memory, b)
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// C. Test the converse of B, now that they are reversed
+	a = patchRef{ProgramT, MemoryT, index(0, 42)}
+	b = patchRef{ProgramT, MemoryT, index(1, 42)}
+	requireUninitialized(t, memory, a)
+	expectSuccessfulSwap(t, memory, a, b)
+
+	// E. Test error handling when a swap is requested from an invalid location
+	a = patchRef{ProgramT, MemoryT, index(numProgBanks, 42)}
+	b = patchRef{ProgramT, MemoryT, index(1, 42)}
+	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
+
+	// F. Test error handling whan a swap is requested to an invalid location
+	a = patchRef{ProgramT, MemoryT, index(1, 42)}
+	b = patchRef{ProgramT, MemoryT, index(numProgBanks, 42)}
+	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
+}
+
+// Helpers =======================================================
 
 func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, startLocation, numToMove int, permitBlank bool) (refs []patchRef) {
 	startLoc := index(startBank, startLocation)
@@ -186,6 +253,48 @@ func populatedMemory(t *testing.T, filename string) *PatchMemory {
 	memory := new(PatchMemory)
 	helperLoadFromFile(t, memory, filename)
 	return memory
+}
+
+func expectSuccessfulSwap(t *testing.T, memory *PatchMemory, aref patchRef, bref patchRef) {
+	a, aerr := memory.get(aref)
+	b, berr := memory.get(bref)
+
+	err := memory.swap(aref, bref)
+	if err != nil {
+		t.Errorf("Error swapping %s with %s: %s", aref.String(), bref.String(), err)
+	}
+	// Ensure the swap occurred
+	a2, aerr2 := memory.get(aref)
+	b2, berr2 := memory.get(bref)
+
+	if a2 != b || aerr2 != berr {
+		var aStr, a2Str string
+		if aerr != nil {
+			aStr = "uninitialized"
+		} else {
+			aStr = a.Summary()
+		}
+		if aerr2 != nil {
+			a2Str = "uninitialized"
+		} else {
+			a2Str = a2.Summary()
+		}
+		t.Errorf("Swap incorrectly changed %s from %s to %s", aref.String(), aStr, a2Str)
+	}
+	if b2 != a || berr2 != aerr {
+		var bStr, b2Str string
+		if berr != nil {
+			bStr = "uninitialized"
+		} else {
+			bStr = b.Summary()
+		}
+		if berr2 != nil {
+			b2Str = "uninitialized"
+		} else {
+			b2Str = b2.Summary()
+		}
+		t.Errorf("Swap incorrectly changed %s from %s to %s", bref.String(), bStr, b2Str)
+	}
 }
 
 func expectSuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRef, dest patchRef, mode transferMode) {
@@ -212,6 +321,51 @@ func expectSuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRef,
 		if msum != quicksummary[i] {
 			t.Fatalf("Did not correctly transfer patch: Expected destination to contain %q, got %q", quicksummary[i], msum)
 		}
+	}
+}
+
+func requireUninitialized(t *testing.T, memory *PatchMemory, ref patchRef) {
+	if p, err := memory.get(ref); err != ErrUninitialized {
+		t.Fatalf("Expected %s to be uninitialized, but it contained %s", ref.String(), p.Summary())
+	}
+}
+
+func expectUnsuccessfulSwap(t *testing.T, memory *PatchMemory, aref patchRef, bref patchRef, expectedError error) {
+	a, aerr := memory.get(aref)
+	b, berr := memory.get(bref)
+
+	err := memory.swap(aref, bref)
+	if err != expectedError {
+		t.Errorf("Expected error %s, got: %s", expectedError, err)
+	}
+	// Ensure the swap did not occur
+	if a2, aerr2 := memory.get(aref); a2 != a || aerr2 != aerr {
+		var aStr, a2Str string
+		if aerr != nil {
+			aStr = "uninitialized"
+		} else {
+			aStr = a.Summary()
+		}
+		if aerr2 != nil {
+			a2Str = "uninitialized"
+		} else {
+			a2Str = a2.Summary()
+		}
+		t.Errorf("Failed swap changed %s from %s to %s", aref.String(), aStr, a2Str)
+	}
+	if b2, berr2 := memory.get(bref); b2 != b || berr2 != berr {
+		var bStr, b2Str string
+		if berr != nil {
+			bStr = "uninitialized"
+		} else {
+			bStr = b.Summary()
+		}
+		if berr2 != nil {
+			b2Str = "uninitialized"
+		} else {
+			b2Str = b2.Summary()
+		}
+		t.Errorf("Failed swap changed %s from %s to %s", bref.String(), bStr, b2Str)
 	}
 }
 
