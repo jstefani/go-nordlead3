@@ -45,7 +45,7 @@ func (memory *PatchMemory) clear(ref patchRef) {
 
 // Formats a patch as sysex in NL3 format
 func (memory *PatchMemory) export(ref patchRef) (*[]byte, error) {
-	patch, err := memory.Get(ref)
+	patch, err := memory.get(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (memory *PatchMemory) ExportProgramBank(bank int, filename string) error {
 
 // Returns a generic patch interface, could be either a program or a performance.
 // It remains to the receiver to assert the patch to the necessary type.
-func (memory *PatchMemory) Get(ref patchRef) (patch, error) {
+func (memory *PatchMemory) get(ref patchRef) (patch, error) {
 	var result patch
 
 	if !ref.valid() {
@@ -177,7 +177,7 @@ func (memory *PatchMemory) set(ref patchRef, patch patch) error {
 
 func (memory *PatchMemory) Import(rawSysex []byte) error {
 	err := *new(error)
-	sysex, err := ParseSysex(rawSysex)
+	sysex, err := parseSysex(rawSysex)
 	if err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func (memory *PatchMemory) loadPerformanceFromSysex(s *sysex) error {
 		} else {
 			ref = patchRef{PerformanceT, MemoryT, index(s.bank(), s.location())}
 		}
-		if existing, err := memory.Get(ref); err == nil {
+		if existing, err := memory.get(ref); err == nil {
 			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
 		}
 		err = memory.set(ref, &performance)
@@ -276,7 +276,7 @@ func (memory *PatchMemory) loadProgramFromSysex(s *sysex) error {
 		} else {
 			ref = patchRef{ProgramT, MemoryT, index(s.bank(), s.location())}
 		}
-		if existing, err := memory.Get(ref); err == nil {
+		if existing, err := memory.get(ref); err == nil {
 			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
 		}
 		err = memory.set(ref, &program)
@@ -284,10 +284,10 @@ func (memory *PatchMemory) loadProgramFromSysex(s *sysex) error {
 	return err
 }
 
-// Transfer can behave as a copy (mode is copyM) or a move (mode is moveM).
+// transfer can behave as a copy (mode is copyM) or a move (mode is moveM).
 // Returns an error if any of the len(src) locations following dest are not empty, or if src contains
 // patchLocations of different patchTypes
-func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transferMode) error {
+func (memory *PatchMemory) transfer(src []patchRef, dest patchRef, mode transferMode) error {
 	var err error
 	var moved []patchRef
 
@@ -311,7 +311,7 @@ func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transfer
 			err = ErrMemoryOccupied
 		}
 		if err != nil {
-			memory.Transfer(moved, src[0], moveM) // undo the ones moved so far
+			memory.transfer(moved, src[0], moveM) // undo the ones moved so far
 			break
 		}
 

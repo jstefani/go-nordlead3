@@ -14,7 +14,7 @@ func TestLoadValidPerformanceFromSysex(t *testing.T) {
 		t.Errorf("Expected clean load from valid sysex. Got: %q", err)
 	}
 
-	performance, err := memory.Get(validPerformanceRef)
+	performance, err := memory.get(validPerformanceRef)
 
 	if err != nil {
 		t.Errorf("Did not load performance into expected location!")
@@ -40,7 +40,7 @@ func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
 		return
 	}
 
-	_, err = memory.Get(invalidPerformanceRef)
+	_, err = memory.get(invalidPerformanceRef)
 
 	if err == nil {
 		t.Errorf("Loaded invalid performance into memory!")
@@ -56,7 +56,7 @@ func TestLoadProgramFromSysex(t *testing.T) {
 		t.Errorf("Expected clean load from valid sysex. Got: %q", err)
 	}
 
-	patch, err := memory.Get(validProgramRef)
+	patch, err := memory.get(validProgramRef)
 
 	if err != nil {
 		t.Errorf("Did not load program into expected location!")
@@ -135,16 +135,16 @@ func TestMovePrograms(t *testing.T) {
 
 	// Test successful moving to bank 2, same startLoc
 	dest = buildRefList(t, memory, ProgramT, 1, startLoc, numToMove, true)
-	err = memory.Transfer(src, dest[0], moveM)
+	err = memory.transfer(src, dest[0], moveM)
 	if err != nil {
 		t.Fatalf("Failure moving patches: %s", err)
 	}
 	for i := 0; i < numToMove; i++ {
-		_, err = memory.Get(src[i])
+		_, err = memory.get(src[i])
 		if err != ErrUninitialized {
 			t.Fatalf("Move left original location %d:%d initialized", 0, i)
 		}
-		moved, _ := memory.Get(dest[i])
+		moved, _ := memory.get(dest[i])
 		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
 		if msum != quicksummary[i] {
 			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
@@ -157,14 +157,14 @@ func TestMovePrograms(t *testing.T) {
 	oneOverMax := bankSize - numToMove + 1
 	dest = buildRefList(t, memory, ProgramT, numProgBanks-1, oneOverMax, numToMove, true)
 
-	err = memory.Transfer(src, dest[0], moveM)
+	err = memory.transfer(src, dest[0], moveM)
 	if err != ErrMemoryOverflow {
 		t.Errorf("Expected error ErrorMemoryOverflow, got: %s", err)
 	}
 
 	// Validate that it put everything back
 	for i := 0; i < numToMove; i++ {
-		orig, err := memory.Get(src[i])
+		orig, err := memory.get(src[i])
 		if err == ErrUninitialized {
 			t.Fatalf("Failed move left original %d:%d uninitialized", src[i].bank(), src[i].location())
 		}
@@ -175,7 +175,7 @@ func TestMovePrograms(t *testing.T) {
 	}
 
 	// Test unsuccessful moving to occupied range
-	err = memory.Transfer(src, patchRef{ProgramT, MemoryT, index(0, 127)}, moveM)
+	err = memory.transfer(src, patchRef{ProgramT, MemoryT, index(0, 127)}, moveM)
 	if err != ErrMemoryOccupied {
 		t.Errorf("Expected error ErrorMemoryOccupied, got %s", err)
 	}
@@ -201,16 +201,16 @@ func TestMovePerformances(t *testing.T) {
 
 	// Test successful moving to bank 2, same startLoc
 	dest = buildRefList(t, memory, PerformanceT, destBank, startLoc, numToMove, true)
-	err = memory.Transfer(src, dest[0], moveM)
+	err = memory.transfer(src, dest[0], moveM)
 	if err != nil {
 		t.Fatalf("Failure moving patches: %s", err)
 	}
 	for i := 0; i < numToMove; i++ {
-		_, err = memory.Get(src[i])
+		_, err = memory.get(src[i])
 		if err != ErrUninitialized {
 			t.Fatalf("Move left original location %d:%d initialized", startBank, i)
 		}
-		moved, _ := memory.Get(dest[i])
+		moved, _ := memory.get(dest[i])
 		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
 		if msum != quicksummary[i] {
 			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
@@ -221,14 +221,14 @@ func TestMovePerformances(t *testing.T) {
 	src = buildRefList(t, memory, PerformanceT, destBank, startLoc, numToMove, false)
 	quicksummary = summarize(memory, src)
 	oneOverMax := (numPerfBanks*bankSize - 1) - (numToMove - 2)
-	err = memory.Transfer(src, patchRef{PerformanceT, MemoryT, oneOverMax}, moveM)
+	err = memory.transfer(src, patchRef{PerformanceT, MemoryT, oneOverMax}, moveM)
 	if err != ErrMemoryOverflow {
 		t.Errorf("Expected error ErrorMemoryOverflow, got: %s", err)
 	}
 
 	// Validate that it put everything back
 	for i := 0; i < numToMove; i++ {
-		moved, err := memory.Get(src[i])
+		moved, err := memory.get(src[i])
 		if err == ErrUninitialized {
 			t.Fatalf("Failed move left original %d:%d uninitialized", 0, i)
 		}
@@ -239,7 +239,7 @@ func TestMovePerformances(t *testing.T) {
 	}
 
 	// Test unsuccessful moving to occupied range
-	err = memory.Transfer(src, patchRef{PerformanceT, MemoryT, index(destBank, startLoc+numToMove-1)}, moveM)
+	err = memory.transfer(src, patchRef{PerformanceT, MemoryT, index(destBank, startLoc+numToMove-1)}, moveM)
 	if err != ErrMemoryOccupied {
 		t.Errorf("Expected error ErrorMemoryOccupied, got %s", err)
 	}
@@ -251,7 +251,7 @@ func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, st
 
 	for i := startLoc; i < startLoc+numToMove; i++ {
 		ref := patchRef{pt, MemoryT, i}
-		_, err := memory.Get(ref)
+		_, err := memory.get(ref)
 
 		if !permitBlank && err != nil {
 			continue // ignore uninitialized patches in move block
@@ -266,7 +266,7 @@ func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, st
 
 func summarize(memory *PatchMemory, refs []patchRef) (summaries []string) {
 	for _, ref := range refs {
-		if p, err := memory.Get(ref); err == nil {
+		if p, err := memory.get(ref); err == nil {
 			summaries = append(summaries, fmt.Sprintf("%s:%f", p.PrintableName(), p.Version()))
 		} else {
 			summaries = append(summaries, "")

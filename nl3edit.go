@@ -26,7 +26,7 @@ func printPerformance(memory *nordlead3.PatchMemory, bank int, location int, dep
 		fmt.Printf("Invalid location %d:%d\n", bank, location)
 		return
 	}
-	performance, err := memory.Get(ref)
+	performance, err := memory.get(ref)
 	if err != nil {
 		fmt.Printf("Performance %d:%d not initialized.\n", bank, location)
 		return
@@ -40,7 +40,7 @@ func printProgram(memory *nordlead3.PatchMemory, bank int, location int, depth i
 		fmt.Printf("Invalid location %d:%d\n", bank, location)
 		return
 	}
-	program, err := memory.Get(ref)
+	program, err := memory.get(ref)
 	if err != nil {
 		fmt.Printf("Program %d:%d not initialized.\n", bank, location)
 		return
@@ -299,7 +299,7 @@ func rename(memory *nordlead3.PatchMemory, typ string, bank, location int, newNa
 			fmt.Printf("Invalid location %d:%d\n", bank, location)
 			return
 		}
-		p, err := memory.Get(ref)
+		p, err := memory.get(ref)
 		if err != nil {
 			fmt.Println(err)
 			return

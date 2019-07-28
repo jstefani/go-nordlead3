@@ -141,7 +141,7 @@ func (s *sysex) version() float64 {
 	return float64(uint16(s.rawSysex[versionOffset])<<8+uint16(s.rawSysex[versionOffset+1])) / 100.0
 }
 
-func ParseSysex(rawSysex []byte) (*sysex, error) {
+func parseSysex(rawSysex []byte) (*sysex, error) {
 	// Strip leading F0 and trailing F7, if present
 	if rawSysex[0] == 0xF0 {
 		rawSysex = rawSysex[1:]

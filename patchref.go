@@ -47,13 +47,6 @@ func (ref *patchRef) valid() bool {
 	return valid(ref.PatchType, ref.source, ref.index)
 }
 
-// If SourceType is slot, only use bank, and set location to 0.
-// Follows comma, ok idiom.
-func NewPatchRef(pt PatchType, source SourceType, bank, location int) (patchRef, bool) {
-	ref := patchRef{pt, source, index(bank, location)}
-	return ref, ref.valid()
-}
-
 func (ref *patchRef) String() string {
 	var sourceStr string
 	var typeStr string

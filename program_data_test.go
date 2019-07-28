@@ -7,7 +7,7 @@ import (
 func TestDumpProgramSysex(t *testing.T) {
 	memory := new(PatchMemory)
 	inputSysex := validProgramSysex(t)
-	inputSysexStruct, err := ParseSysex(inputSysex)
+	inputSysexStruct, err := parseSysex(inputSysex)
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
@@ -17,7 +17,7 @@ func TestDumpProgramSysex(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
-	p, err := memory.Get(validProgramRef)
+	p, err := memory.get(validProgramRef)
 	program := p.(*Program)
 
 	outputSysex, err := program.data.dumpSysex()
@@ -35,7 +35,7 @@ func TestDumpProgramSysex(t *testing.T) {
 }
 
 func TestPackAndUnpackSysex(t *testing.T) {
-	s, _ := ParseSysex(validProgramSysex(t))
+	s, _ := parseSysex(validProgramSysex(t))
 	bitsToRepack := s.decodedBitstream
 	repackedBits := unpackSysex(packSysex(bitsToRepack))
 

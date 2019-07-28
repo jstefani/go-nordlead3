@@ -26,6 +26,8 @@ func (performance *Performance) PrintContents(depth int) {
 	printStruct(performance.data, depth)
 }
 
+// Performances don't support categories so this always returns "-unsupported-".
+// Included to satisfy Patch interface.
 func (performance *Performance) PrintableCategory() string {
 	return "-unsupported-"
 }
@@ -37,6 +39,8 @@ func (performance *Performance) PrintableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(performance.name[:]), "\x00"))
 }
 
+// Performances don't support categories so this always returns ErrNoPerfCategory.
+// Included to satisfy Patch interface.
 func (performance *Performance) SetCategory(uint8) error {
 	return ErrNoPerfCategory // performances don't support categories
 }

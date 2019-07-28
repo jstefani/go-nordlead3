@@ -7,7 +7,7 @@ import (
 func TestDumpPerformanceSysex(t *testing.T) {
 	memory := new(PatchMemory)
 	inputSysex := validPerformanceSysex(t)
-	inputSysexStruct, err := ParseSysex(inputSysex)
+	inputSysexStruct, err := parseSysex(inputSysex)
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
@@ -18,7 +18,7 @@ func TestDumpPerformanceSysex(t *testing.T) {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
 
-	p, err := memory.Get(validPerformanceRef)
+	p, err := memory.get(validPerformanceRef)
 	performance := p.(*Performance)
 	if err != nil {
 		t.Errorf("Error retrieving performance: %q", err)
