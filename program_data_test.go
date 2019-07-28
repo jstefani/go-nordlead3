@@ -17,7 +17,7 @@ func TestDumpProgramSysex(t *testing.T) {
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
-	p, err := memory.get(validProgramRef)
+	p, err := memory.Get(validProgramRef)
 	program := p.(*Program)
 
 	outputSysex, err := program.data.dumpSysex()

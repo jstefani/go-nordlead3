@@ -21,7 +21,7 @@ const (
 )
 
 // definition
-var performanceSlotRef = patchRef{performanceT, slotT, 0}
+var performanceSlotRef = patchRef{PerformanceT, SlotT, 0}
 
 type transferMode bool
 
@@ -34,10 +34,10 @@ type PatchMemory struct {
 
 func (memory *PatchMemory) clear(ref patchRef) {
 	if memory.initialized(ref) {
-		switch ref.patchType {
-		case performanceT:
+		switch ref.PatchType {
+		case PerformanceT:
 			*memory.perfPtr(ref) = nil
-		case programT:
+		case ProgramT:
 			*memory.progPtr(ref) = nil
 		}
 	}
@@ -45,7 +45,7 @@ func (memory *PatchMemory) clear(ref patchRef) {
 
 // Formats a patch as sysex in NL3 format
 func (memory *PatchMemory) export(ref patchRef) (*[]byte, error) {
-	patch, err := memory.get(ref)
+	patch, err := memory.Get(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (memory *PatchMemory) exportLocations(refs []patchRef, filename string) err
 	)
 
 	for _, ref := range refs {
-		fdata, err := memory.export(patchRef{performanceT, memoryT, ref.index})
+		fdata, err := memory.export(patchRef{PerformanceT, MemoryT, ref.index})
 		if err != nil {
 			return err
 		}
@@ -91,7 +91,7 @@ func (memory *PatchMemory) ExportAllPerformances(filename string) error {
 	var refs []patchRef
 
 	for i, _ := range memory.performances {
-		refs = append(refs, patchRef{performanceT, memoryT, i})
+		refs = append(refs, patchRef{PerformanceT, MemoryT, i})
 	}
 	return memory.exportLocations(refs, filename)
 }
@@ -100,13 +100,13 @@ func (memory *PatchMemory) ExportAllPrograms(filename string) error {
 	var refs []patchRef
 
 	for i, _ := range memory.programs {
-		refs = append(refs, patchRef{programT, memoryT, i})
+		refs = append(refs, patchRef{ProgramT, MemoryT, i})
 	}
 	return memory.exportLocations(refs, filename)
 }
 
 func (memory *PatchMemory) ExportPerformance(bank, location int, filename string) error {
-	refs := []patchRef{patchRef{performanceT, memoryT, index(bank, location)}}
+	refs := []patchRef{patchRef{PerformanceT, MemoryT, index(bank, location)}}
 	return memory.exportLocations(refs, filename)
 }
 
@@ -114,13 +114,13 @@ func (memory *PatchMemory) ExportPerformanceBank(bank int, filename string) erro
 	var refs []patchRef
 
 	for i := 0; i < bankSize; i++ {
-		refs = append(refs, patchRef{performanceT, memoryT, index(bank, i)})
+		refs = append(refs, patchRef{PerformanceT, MemoryT, index(bank, i)})
 	}
 	return memory.exportLocations(refs, filename)
 }
 
 func (memory *PatchMemory) ExportProgram(bank, location int, filename string) error {
-	refs := []patchRef{patchRef{programT, memoryT, index(bank, location)}}
+	refs := []patchRef{patchRef{ProgramT, MemoryT, index(bank, location)}}
 	return memory.exportLocations(refs, filename)
 }
 
@@ -128,14 +128,14 @@ func (memory *PatchMemory) ExportProgramBank(bank int, filename string) error {
 	var refs []patchRef
 
 	for i := 0; i < bankSize; i++ {
-		refs = append(refs, patchRef{programT, memoryT, index(bank, i)})
+		refs = append(refs, patchRef{ProgramT, MemoryT, index(bank, i)})
 	}
 	return memory.exportLocations(refs, filename)
 }
 
 // Returns a generic patch interface, could be either a program or a performance.
 // It remains to the receiver to assert the patch to the necessary type.
-func (memory *PatchMemory) get(ref patchRef) (patch, error) {
+func (memory *PatchMemory) Get(ref patchRef) (patch, error) {
 	var result patch
 
 	if !ref.valid() {
@@ -144,10 +144,10 @@ func (memory *PatchMemory) get(ref patchRef) (patch, error) {
 	if !memory.initialized(ref) {
 		return nil, ErrUninitialized
 	}
-	switch ref.patchType {
-	case performanceT:
+	switch ref.PatchType {
+	case PerformanceT:
 		result = *memory.perfPtr(ref)
-	case programT:
+	case ProgramT:
 		result = *memory.progPtr(ref)
 	}
 
@@ -160,13 +160,13 @@ func (memory *PatchMemory) get(ref patchRef) (patch, error) {
 func (memory *PatchMemory) set(ref patchRef, patch patch) error {
 	err := ErrInvalidLocation
 
-	switch ref.patchType {
-	case performanceT:
+	switch ref.PatchType {
+	case PerformanceT:
 		if performancePtr, ok := patch.(*Performance); ok {
 			*memory.perfPtr(ref) = performancePtr
 			err = nil
 		}
-	case programT:
+	case ProgramT:
 		if programPtr, ok := patch.(*Program); ok {
 			*memory.progPtr(ref) = programPtr
 			err = nil
@@ -250,9 +250,9 @@ func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) error {
 		if sysex.messageType() == PerformanceFromSlot {
 			ref = performanceSlotRef
 		} else {
-			ref = patchRef{performanceT, memoryT, index(sysex.bank(), sysex.location())}
+			ref = patchRef{PerformanceT, MemoryT, index(sysex.bank(), sysex.location())}
 		}
-		if existing, err := memory.get(ref); err == nil {
+		if existing, err := memory.Get(ref); err == nil {
 			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), sysex.printableName())
 		}
 		err = memory.set(ref, &performance)
@@ -272,11 +272,11 @@ func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) error {
 			data:     programData,
 		}
 		if sysex.messageType() == ProgramFromSlot {
-			ref = patchRef{programT, slotT, sysex.bank()}
+			ref = patchRef{ProgramT, SlotT, sysex.bank()}
 		} else {
-			ref = patchRef{programT, memoryT, index(sysex.bank(), sysex.location())}
+			ref = patchRef{ProgramT, MemoryT, index(sysex.bank(), sysex.location())}
 		}
-		if existing, err := memory.get(ref); err == nil {
+		if existing, err := memory.Get(ref); err == nil {
 			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), sysex.printableName())
 		}
 		err = memory.set(ref, &program)
@@ -298,17 +298,17 @@ func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transfer
 	if len(src) == 0 {
 		return nil
 	}
-	if src[0].patchType != dest.patchType {
+	if src[0].PatchType != dest.PatchType {
 		return ErrXferTypeMismatch
 	}
 
 	for i, currSrc := range src {
-		currDest := patchRef{dest.patchType, dest.source, dest.index + i}
+		currDest := patchRef{dest.PatchType, dest.source, dest.index + i}
 
 		if !currDest.valid() {
 			err = ErrMemoryOverflow
 		}
-		if currSrc.patchType != currDest.patchType {
+		if currSrc.PatchType != currDest.PatchType {
 			err = ErrXferTypeMismatch
 		}
 		if memory.initialized(currDest) {
@@ -320,8 +320,8 @@ func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transfer
 		}
 
 		// Handle move of each program type since their pointer values are separate
-		switch currSrc.patchType {
-		case performanceT:
+		switch currSrc.PatchType {
+		case PerformanceT:
 			srcPtr := memory.perfPtr(currSrc)
 			destPtr := memory.perfPtr(currDest)
 
@@ -329,7 +329,7 @@ func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transfer
 			if mode == moveM {
 				*srcPtr = nil
 			}
-		case programT:
+		case ProgramT:
 			srcPtr := memory.progPtr(currSrc)
 			destPtr := memory.progPtr(currDest)
 
@@ -352,7 +352,7 @@ func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	for i, program := range memory.programs {
 		bank, location := bankloc(i)
 
-		if memory.initialized(patchRef{programT, memoryT, i}) || !omitBlank {
+		if memory.initialized(patchRef{ProgramT, MemoryT, i}) || !omitBlank {
 			if bank != currBank {
 				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 				result = append(result, bank_header)
@@ -375,7 +375,7 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 	for i, perf := range memory.performances {
 		bank, location := bankloc(i)
 
-		if memory.initialized(patchRef{performanceT, memoryT, i}) || !omitBlank {
+		if memory.initialized(patchRef{PerformanceT, MemoryT, i}) || !omitBlank {
 			if bank != currBank {
 				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
 				result = append(result, bank_header)
@@ -395,18 +395,18 @@ func (memory *PatchMemory) initialized(ref patchRef) (result bool) {
 	}
 
 	switch ref.source {
-	case slotT:
-		switch ref.patchType {
-		case performanceT:
+	case SlotT:
+		switch ref.PatchType {
+		case PerformanceT:
 			result = memory.slotPerformance != nil
-		case programT:
+		case ProgramT:
 			result = memory.slotPrograms[ref.index] != nil
 		}
-	case memoryT:
-		switch ref.patchType {
-		case performanceT:
+	case MemoryT:
+		switch ref.PatchType {
+		case PerformanceT:
 			result = memory.performances[ref.index] != nil
-		case programT:
+		case ProgramT:
 			result = memory.programs[ref.index] != nil
 		}
 	}
@@ -416,14 +416,14 @@ func (memory *PatchMemory) initialized(ref patchRef) (result bool) {
 
 // panics if given an invalid patchRef
 func (memory *PatchMemory) perfPtr(ref patchRef) (perf **Performance) {
-	if ref.patchType != performanceT || !ref.valid() {
+	if ref.PatchType != PerformanceT || !ref.valid() {
 		panic("Invalid reference, cannot return pointer!")
 	}
 
 	switch ref.source {
-	case slotT:
+	case SlotT:
 		perf = &memory.slotPerformance
-	case memoryT:
+	case MemoryT:
 		perf = &memory.performances[ref.index]
 	}
 	return
@@ -431,14 +431,14 @@ func (memory *PatchMemory) perfPtr(ref patchRef) (perf **Performance) {
 
 // panics if given an invalid patchRef
 func (memory *PatchMemory) progPtr(ref patchRef) (prog **Program) {
-	if ref.patchType != programT || !ref.valid() {
+	if ref.PatchType != ProgramT || !ref.valid() {
 		panic("Invalid reference, cannot return pointer!")
 	}
 
 	switch ref.source {
-	case slotT:
+	case SlotT:
 		prog = &memory.slotPrograms[ref.index]
-	case memoryT:
+	case MemoryT:
 		prog = &memory.programs[ref.index]
 	}
 	return

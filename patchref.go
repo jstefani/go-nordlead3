@@ -6,32 +6,32 @@ import (
 
 // patchTypes
 const (
-	programT = iota
-	performanceT
+	ProgramT = iota
+	PerformanceT
 )
 
 // sourceTypes
 const (
-	slotT = iota
-	memoryT
+	SlotT = iota
+	MemoryT
 )
 
-type patchType int
-type sourceType int
+type PatchType int
+type SourceType int
 
-func (pt patchType) String() (typeStr string) {
-	switch patchType(pt) {
-	case performanceT:
+func (pt PatchType) String() (typeStr string) {
+	switch PatchType(pt) {
+	case PerformanceT:
 		typeStr = "performance"
-	case programT:
+	case ProgramT:
 		typeStr = "program"
 	}
 	return
 }
 
 type patchRef struct {
-	patchType patchType
-	source    sourceType
+	PatchType PatchType
+	source    SourceType
 	index     int
 }
 
@@ -44,7 +44,14 @@ func (ref *patchRef) location() int {
 }
 
 func (ref *patchRef) valid() bool {
-	return valid(ref.patchType, ref.source, ref.index)
+	return valid(ref.PatchType, ref.source, ref.index)
+}
+
+// If SourceType is slot, only use bank, and set location to 0.
+// Follows comma, ok idiom.
+func NewPatchRef(pt PatchType, source SourceType, bank, location int) (patchRef, bool) {
+	ref := patchRef{pt, source, index(bank, location)}
+	return ref, ref.valid()
 }
 
 func (ref *patchRef) String() string {
@@ -52,17 +59,17 @@ func (ref *patchRef) String() string {
 	var typeStr string
 	var locationStr string
 
-	switch ref.patchType {
-	case performanceT:
+	switch ref.PatchType {
+	case PerformanceT:
 		typeStr = "performance"
-	case programT:
+	case ProgramT:
 		typeStr = "program"
 	}
 	switch ref.source {
-	case slotT:
+	case SlotT:
 		sourceStr = "slot"
 		locationStr = fmt.Sprintf("%d", ref.index)
-	case memoryT:
+	case MemoryT:
 		sourceStr = "memory location"
 		locationStr = fmt.Sprintf("%d:%d", bank(ref.index), location(ref.index))
 	}

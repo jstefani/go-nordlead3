@@ -5,15 +5,15 @@ TODO:
 
  - Get rid of the slotProgramT and slotPerformanceT types.
      - Instead, add a location in the ref that's either a slot or memory
-     - The ref responds to source with either slotT or memoryT
+     - The ref responds to source with either SlotT or MemoryT
      - Either type responds to index()
      - Because bank/location aren't shared by all types of ref
-     - Interface Reference{} requires source() sourceType, index() int, contents() patchType
-     - Helper methods RefFromSlot(patchType, index) and RefFromMemory(patchType, bank, location) can be public.
-     - memory.get(Reference) should return a *patch, but should not be exported (patches aren't useful to consumers)
+     - Interface Reference{} requires source() SourceType, index() int, contents() PatchType
+     - Helper methods RefFromSlot(PatchType, index) and RefFromMemory(PatchType, bank, location) can be public.
+     - memory.Get(Reference) should return a *patch, but should not be exported (patches aren't useful to consumers)
      - methods accepting indices should not be public, as many methods as possible, both internal and external, should use refs, if this reduces the number of methods needed
  - Find an interface abstraction that lets you do away with the custom behaviours for program/performance as much as possible
-     - memory.get needs to be able to return one of these, perhaps "patch" or "patchable"?
+     - memory.Get needs to be able to return one of these, perhaps "patch" or "patchable"?
      - Should not be exported, it doesn't have a real use outside the library functions.
      - Exported stuff should definitely be Program/Performance split
  - Be able to print and dump the slot content
@@ -72,6 +72,7 @@ var (
 	ErrMemoryOccupied   = errors.New("One or more destination memory locations are not blank")
 	ErrMemoryOverflow   = errors.New("Not enough room in that bank")
 	ErrNoDataToWrite    = errors.New("No data to write to file")
+	ErrNoPerfCategory   = errors.New("Performances do not support categories.")
 )
 
 func exportToFile(data *[]byte, filename string, overwrite bool) error {

@@ -21,28 +21,38 @@ func printSummaryInfo(*nordlead3.PatchMemory) {
 }
 
 func printPerformance(memory *nordlead3.PatchMemory, bank int, location int, depth int) {
-	performance, err := memory.GetPerformance(uint8(bank-1), uint8(location-1))
+	ref, ok := nordlead3.NewPatchRef(nordlead3.PerformanceT, nordlead3.MemoryT, bank-1, location-1)
+	if !ok {
+		fmt.Printf("Invalid location %d:%d\n", bank, location)
+		return
+	}
+	performance, err := memory.Get(ref)
 	if err != nil {
 		fmt.Printf("Performance %d:%d not initialized.\n", bank, location)
 		return
 	}
-	performance.PrintableContents(depth)
+	performance.PrintContents(depth)
 }
 
 func printProgram(memory *nordlead3.PatchMemory, bank int, location int, depth int) {
-	program, err := memory.GetProgram(uint8(bank-1), uint8(location-1))
+	ref, ok := nordlead3.NewPatchRef(nordlead3.ProgramT, nordlead3.MemoryT, bank-1, location-1)
+	if !ok {
+		fmt.Printf("Invalid location %d:%d\n", bank, location)
+		return
+	}
+	program, err := memory.Get(ref)
 	if err != nil {
 		fmt.Printf("Program %d:%d not initialized.\n", bank, location)
 		return
 	}
-	program.PrintableContents(depth)
+	program.PrintContents(depth)
 }
 
 func runCommands(memory *nordlead3.PatchMemory) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		// Print prompt
-		fmt.Print("nl3 (h for help) > ")
+		fmt.Print("\nnl3 (h for help) > ")
 
 		// Accept input
 		scanner.Scan()
@@ -56,7 +66,7 @@ func runCommands(memory *nordlead3.PatchMemory) {
 		switch command {
 		case "export", "e":
 			if tblfn, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
-				export(memory, scanner, tblfn[0].(string), uint8(tblfn[1].(int)), uint8(tblfn[2].(int)), tblfn[3].(string))
+				export(memory, scanner, tblfn[0].(string), tblfn[1].(int), tblfn[2].(int), tblfn[3].(string))
 			}
 		case "help", "h":
 			help()
@@ -66,20 +76,20 @@ func runCommands(memory *nordlead3.PatchMemory) {
 			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
 				printPerformance(memory, bld[0].(int), bld[1].(int), bld[2].(int))
 			} else {
-				fmt.Printf(memory.PrintPerformances(true))
+				fmt.Printf(memory.SprintPerformances(true))
 			}
 		case "prog":
 			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
 				printProgram(memory, bld[0].(int), bld[1].(int), bld[2].(int))
 			} else {
-				fmt.Printf(memory.PrintPrograms(true))
+				fmt.Printf(memory.SprintPrograms(true))
 			}
 		case "quit", "q", "exit":
 			fmt.Println("See ya!")
 			return
 		case "rename", "r":
 			if tbln, ok := getArgs(args, []string{"string", "int", "int", "toEnd"}); ok {
-				rename(memory, tbln[0].(string), uint8(tbln[1].(int)), uint8(tbln[2].(int)), tbln[3].(string))
+				rename(memory, tbln[0].(string), tbln[1].(int), tbln[2].(int), tbln[3].(string))
 			}
 		default:
 			// skip
@@ -136,7 +146,7 @@ func getArgs(args []string, expectations []string) (result []interface{}, ok boo
 	return result, ok
 }
 
-func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, bank, location uint8, filename string) {
+func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, bank, location int, filename string) {
 	var err error
 
 	if len(filename) == 0 {
@@ -160,7 +170,7 @@ func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, b
 	}
 }
 
-func exportProgram(memory *nordlead3.PatchMemory, bank, location uint8, filename string) {
+func exportProgram(memory *nordlead3.PatchMemory, bank, location int, filename string) {
 	var err error
 
 	err = memory.ExportProgram(bank-1, location-1, filename)
@@ -268,7 +278,7 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 	}
 	fmt.Printf("Opening %q\n", filename)
 
-	validFound, invalidFound, err := memory.LoadFromFile(file)
+	validFound, invalidFound, err := memory.ImportFrom(file)
 	if err != nil {
 		panic(err)
 	}
@@ -276,43 +286,35 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 	fmt.Printf("Found %v valid SysEx entries (%v invalid).\n\n", validFound, invalidFound)
 }
 
-func rename(memory *nordlead3.PatchMemory, typ string, bank, location uint8, newName string) {
+func rename(memory *nordlead3.PatchMemory, typ string, bank, location int, newName string) {
+	var pt nordlead3.PatchType
+
 	switch typ {
 	case "prog":
-		renameProg(memory, bank-1, location-1, newName)
+		pt = nordlead3.ProgramT
 	case "perf":
-		renamePerf(memory, bank-1, location-1, newName)
+		pt = nordlead3.PerformanceT
 	default:
 		fmt.Printf("Cannot rename a %q. Please use `perf` or `prog`.", typ)
+		return
 	}
-}
 
-func renamePerf(memory *nordlead3.PatchMemory, bank, location uint8, newName string) {
-	perf, err := memory.GetPerformance(bank, location)
+	ref, ok := nordlead3.NewPatchRef(pt, nordlead3.MemoryT, bank-1, location-1)
+	if !ok {
+		fmt.Printf("Invalid location %d:%d\n", bank, location)
+		return
+	}
+	p, err := memory.Get(ref)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	err = perf.SetName(newName)
+	err = p.SetName(newName)
 	if err != nil {
-		fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, perf.PrintableName(), err)
+		fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, p.PrintableName(), err)
 		return
 	}
-	fmt.Println(perf.Summary())
-}
-
-func renameProg(memory *nordlead3.PatchMemory, bank, location uint8, newName string) {
-	prog, err := memory.GetProgram(bank, location)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	err = prog.SetName(newName)
-	if err != nil {
-		fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, prog.PrintableName(), err)
-		return
-	}
-	fmt.Println(prog.Summary())
+	fmt.Println(p.Summary())
 }
 
 func usage() {

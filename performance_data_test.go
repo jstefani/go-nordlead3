@@ -18,7 +18,7 @@ func TestDumpPerformanceSysex(t *testing.T) {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
 	}
 
-	p, err := memory.get(validPerformanceRef)
+	p, err := memory.Get(validPerformanceRef)
 	performance := p.(*Performance)
 	if err != nil {
 		t.Errorf("Error retrieving performance: %q", err)

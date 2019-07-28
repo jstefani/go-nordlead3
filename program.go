@@ -12,32 +12,19 @@ type Program struct {
 	data     *ProgramData
 }
 
-// Setters (TODO: could use interfaces (nameable, categorizable) to DRY this up too)
+// Implement patch
 
-func (program *Program) SetCategory(newCategory uint8) error {
-	if program == nil {
-		return ErrUninitialized // can't set a category on an uninitialized program
-	}
-	if newCategory > 0x0D {
-		return ErrInvalidCategory
-	}
-	program.category = newCategory
-	return nil
+func (program *Program) PatchType() PatchType {
+	return ProgramT
 }
 
-func (program *Program) PrintableContents(depth int) {
+func (program *Program) PrintContents(depth int) {
 	if program == nil {
 		fmt.Println(strUninitializedName)
 	}
 	fmt.Printf("Printing %16q (%1.2f) {\n", program.PrintableName(), program.version)
 
 	printStruct(program.data, depth)
-}
-
-// Implement patch
-
-func (program *Program) patchType() patchType {
-	return programT
 }
 
 func (program *Program) PrintableCategory() string {
@@ -52,6 +39,17 @@ func (program *Program) PrintableName() string {
 		return strUninitializedName
 	}
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(program.name[:]), "\x00"))
+}
+
+func (program *Program) SetCategory(newCategory uint8) error {
+	if program == nil {
+		return ErrUninitialized // can't set a category on an uninitialized program
+	}
+	if newCategory > 0x0D {
+		return ErrInvalidCategory
+	}
+	program.category = newCategory
+	return nil
 }
 
 func (program *Program) SetName(newName string) error {

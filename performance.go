@@ -12,29 +12,22 @@ type Performance struct {
 	data     *PerformanceData
 }
 
-func (performance *Performance) SetCategory(newCategory uint8) error {
-	if performance == nil {
-		return ErrUninitialized // can't set a category on an uninitialized program
-	}
-	if newCategory > 0x0D {
-		return ErrInvalidCategory
-	}
-	performance.category = newCategory
-	return nil
-}
-
 // Implement patch
 
-func (performance *Performance) patchType() patchType {
-	return performanceT
+func (performance *Performance) PatchType() PatchType {
+	return PerformanceT
 }
 
-func (performance *Performance) PrintableContents(depth int) {
+func (performance *Performance) PrintContents(depth int) {
 	if performance == nil {
 		fmt.Println(strUninitializedName)
 	}
 	fmt.Printf("Printing %16q (%1.2f)\n", performance.PrintableName(), performance.version)
 	printStruct(performance.data, depth)
+}
+
+func (performance *Performance) PrintableCategory() string {
+	return "-unsupported-"
 }
 
 func (performance *Performance) PrintableName() string {
@@ -44,9 +37,13 @@ func (performance *Performance) PrintableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(performance.name[:]), "\x00"))
 }
 
+func (performance *Performance) SetCategory(uint8) error {
+	return ErrNoPerfCategory // performances don't support categories
+}
+
 func (performance *Performance) SetName(newName string) error {
 	if performance == nil {
-		return ErrUninitialized // can't set a category on an uninitialized program
+		return ErrUninitialized
 	}
 
 	var byteName [16]byte

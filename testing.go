@@ -26,9 +26,9 @@ const (
 	validProgramVersion        = 1.18
 )
 
-var validPerformanceRef = patchRef{performanceT, memoryT, index(validPerformanceBank, validPerformanceLocation)}
-var invalidPerformanceRef = patchRef{performanceT, memoryT, index(invalidPerformanceBank, invalidPerformanceLocation)}
-var validProgramRef = patchRef{programT, memoryT, index(validProgramBank, validProgramLocation)}
+var validPerformanceRef = patchRef{PerformanceT, MemoryT, index(validPerformanceBank, validPerformanceLocation)}
+var invalidPerformanceRef = patchRef{PerformanceT, MemoryT, index(invalidPerformanceBank, invalidPerformanceLocation)}
+var validProgramRef = patchRef{ProgramT, MemoryT, index(validProgramBank, validProgramLocation)}
 
 // If error is not nil, int holds location and error holds a regional comparison for debugging.
 // If error is nil, there was no difference.
