@@ -67,6 +67,8 @@ func runCommands(memory *nordlead3.PatchMemory) {
 		case "export", "e":
 			if tblfn, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
 				export(memory, scanner, tblfn[0].(string), tblfn[1].(int), tblfn[2].(int), tblfn[3].(string))
+			} else {
+				fmt.Println(" e | export  <prog|perf> <bank> <location> [<filename>]  : export bank and location to a file")
 			}
 		case "help", "h":
 			help()
@@ -90,9 +92,13 @@ func runCommands(memory *nordlead3.PatchMemory) {
 		case "rename", "r":
 			if tbln, ok := getArgs(args, []string{"string", "int", "int", "toEnd"}); ok {
 				rename(memory, tbln[0].(string), tbln[1].(int), tbln[2].(int), tbln[3].(string))
+			} else {
+				fmt.Println(" r | rename  <prog|perf> <bank> <location> <new name>    : rename the indicated program or performance")
 			}
 		default:
-			// skip
+			if len(args) > 0 {
+				fmt.Println("Invalid command. Enter h for help.")
+			}
 		}
 	}
 }
@@ -287,8 +293,27 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 }
 
 func rename(memory *nordlead3.PatchMemory, typ string, bank, location int, newName string) {
-	var pt nordlead3.PatchType
+	if pt, ok := ptype(typ); ok {
+		ref, ok := nordlead3.NewPatchRef(pt, nordlead3.MemoryT, bank-1, location-1)
+		if !ok {
+			fmt.Printf("Invalid location %d:%d\n", bank, location)
+			return
+		}
+		p, err := memory.Get(ref)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		err = p.SetName(newName)
+		if err != nil {
+			fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, p.PrintableName(), err)
+			return
+		}
+		fmt.Println(p.Summary())
+	}
+}
 
+func ptype(typ string) (pt nordlead3.PatchType, ok bool) {
 	switch typ {
 	case "prog":
 		pt = nordlead3.ProgramT
@@ -296,25 +321,9 @@ func rename(memory *nordlead3.PatchMemory, typ string, bank, location int, newNa
 		pt = nordlead3.PerformanceT
 	default:
 		fmt.Printf("Cannot rename a %q. Please use `perf` or `prog`.", typ)
-		return
+		return 0, false
 	}
-
-	ref, ok := nordlead3.NewPatchRef(pt, nordlead3.MemoryT, bank-1, location-1)
-	if !ok {
-		fmt.Printf("Invalid location %d:%d\n", bank, location)
-		return
-	}
-	p, err := memory.Get(ref)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	err = p.SetName(newName)
-	if err != nil {
-		fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, p.PrintableName(), err)
-		return
-	}
-	fmt.Println(p.Summary())
+	return pt, true
 }
 
 func usage() {
