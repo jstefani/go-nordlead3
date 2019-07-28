@@ -224,11 +224,11 @@ func packSysex(payload []byte) []byte {
 }
 
 // Returns the given object as a complete sysex chunk, including F0/F7 terminators
-func toSysex(obj sysexable, bank int, location int) (*[]byte, error) {
+func toSysex(obj sysexable, ref patchRef) (*[]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 
 	buffer.Write(SysexHeader)
-	buffer.Write([]byte{obj.sysexType(), uint8(bank), uint8(location)})
+	buffer.Write([]byte{obj.sysexType(), uint8(ref.bank()), uint8(ref.location())})
 	buffer.Write(obj.sysexName())
 	buffer.WriteByte(obj.sysexCategory())
 	buffer.Write((*new([SpareHeaderLength]byte))[:])

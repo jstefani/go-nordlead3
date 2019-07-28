@@ -26,7 +26,7 @@ func printPerformance(memory *nordlead3.PatchMemory, bank int, location int, dep
 		fmt.Printf("Performance %d:%d not initialized.\n", bank, location)
 		return
 	}
-	performance.PrintContents(depth)
+	performance.PrintableContents(depth)
 }
 
 func printProgram(memory *nordlead3.PatchMemory, bank int, location int, depth int) {
@@ -35,7 +35,7 @@ func printProgram(memory *nordlead3.PatchMemory, bank int, location int, depth i
 		fmt.Printf("Program %d:%d not initialized.\n", bank, location)
 		return
 	}
-	program.PrintContents(depth)
+	program.PrintableContents(depth)
 }
 
 func runCommands(memory *nordlead3.PatchMemory) {

@@ -12,35 +12,30 @@ type Performance struct {
 	data     *PerformanceData
 }
 
-// Setters (TODO: could use interfaces (nameable, categorizable) to DRY this up too)
-
 func (performance *Performance) SetCategory(newCategory uint8) error {
 	if performance == nil {
-		return ErrorUninitialized // can't set a category on an uninitialized program
+		return ErrUninitialized // can't set a category on an uninitialized program
 	}
 	if newCategory > 0x0D {
-		return ErrorInvalidCategory
+		return ErrInvalidCategory
 	}
 	performance.category = newCategory
 	return nil
 }
 
-func (performance *Performance) SetName(newName string) error {
-	if performance == nil {
-		return ErrorUninitialized // can't set a category on an uninitialized program
-	}
+// Implement patch
 
-	var byteName [16]byte
-
-	if len(newName) > 16 || len(newName) == 0 {
-		return ErrorInvalidName
-	}
-	copy(byteName[:], newName)
-	performance.name = byteName
-	return nil
+func (performance *Performance) patchType() patchType {
+	return performanceT
 }
 
-// Print helpers ("Presentation")
+func (performance *Performance) PrintableContents(depth int) {
+	if performance == nil {
+		fmt.Println(strUninitializedName)
+	}
+	fmt.Printf("Printing %16q (%1.2f)\n", performance.PrintableName(), performance.version)
+	printStruct(performance.data, depth)
+}
 
 func (performance *Performance) PrintableName() string {
 	if performance == nil {
@@ -49,16 +44,19 @@ func (performance *Performance) PrintableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(performance.name[:]), "\x00"))
 }
 
-func (performance *Performance) Version() float64 {
-	return performance.version
-}
-
-func (performance *Performance) PrintContents(depth int) {
+func (performance *Performance) SetName(newName string) error {
 	if performance == nil {
-		fmt.Println(strUninitializedName)
+		return ErrUninitialized // can't set a category on an uninitialized program
 	}
-	fmt.Printf("Printing %16q (%1.2f)\n", performance.PrintableName(), performance.version)
-	printStruct(performance.data, depth)
+
+	var byteName [16]byte
+
+	if len(newName) > 16 || len(newName) == 0 {
+		return ErrInvalidName
+	}
+	copy(byteName[:], newName)
+	performance.name = byteName
+	return nil
 }
 
 func (performance *Performance) Summary() string {
@@ -66,6 +64,10 @@ func (performance *Performance) Summary() string {
 		return strUninitializedName
 	}
 	return fmt.Sprintf("%16.16q (%1.2f)", performance.PrintableName(), performance.version)
+}
+
+func (performance *Performance) Version() float64 {
+	return performance.version
 }
 
 // Implement sysexable

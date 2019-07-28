@@ -3,8 +3,19 @@ package nordlead3
 /*
 TODO:
 
+ - Get rid of the slotProgramT and slotPerformanceT types.
+     - Instead, add a location in the ref that's either a slot or memory
+     - The ref responds to source with either slotT or memoryT
+     - Either type responds to index()
+     - Because bank/location aren't shared by all types of ref
+     - Interface Reference{} requires source() sourceType, index() int, contents() patchType
+     - Helper methods RefFromSlot(patchType, index) and RefFromMemory(patchType, bank, location) can be public.
+     - memory.get(Reference) should return a *patch, but should not be exported (patches aren't useful to consumers)
+     - methods accepting indices should not be public, as many methods as possible, both internal and external, should use refs, if this reduces the number of methods needed
  - Find an interface abstraction that lets you do away with the custom behaviours for program/performance as much as possible
      - memory.get needs to be able to return one of these, perhaps "patch" or "patchable"?
+     - Should not be exported, it doesn't have a real use outside the library functions.
+     - Exported stuff should definitely be Program/Performance split
  - Be able to print and dump the slot content
  - Expand slot concept to nl3edit too (move, rename, delete)
  - Write a bunch of useful tests for the core methods
@@ -53,12 +64,14 @@ var Categories = [14]string{
 }
 
 var (
-	ErrorUninitialized   = errors.New("That location is not initialized")
-	ErrorInvalidCategory = errors.New("Invalid category")
-	ErrorInvalidName     = errors.New("Name cannot be blank nor exceed 16 characters")
-	ErrorMemoryOccupied  = errors.New("One or more destination memory locations are not blank")
-	ErrorMemoryOverflow  = errors.New("Not enough room in that bank")
-	ErrorNoDataToWrite   = errors.New("No data to write to file")
+	ErrXferTypeMismatch = errors.New("Cannot move different types of patches")
+	ErrInvalidLocation  = errors.New("Invalid location")
+	ErrUninitialized    = errors.New("That location is not initialized")
+	ErrInvalidCategory  = errors.New("Invalid category")
+	ErrInvalidName      = errors.New("Name cannot be blank nor exceed 16 characters")
+	ErrMemoryOccupied   = errors.New("One or more destination memory locations are not blank")
+	ErrMemoryOverflow   = errors.New("Not enough room in that bank")
+	ErrNoDataToWrite    = errors.New("No data to write to file")
 )
 
 func exportToFile(data *[]byte, filename string, overwrite bool) error {

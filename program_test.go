@@ -20,7 +20,7 @@ func TestSetCategory(t *testing.T) {
 
 	// Test error handling
 	err = p.SetCategory(0x0F) // invalid category
-	if err != ErrorInvalidCategory {
+	if err != ErrInvalidCategory {
 		t.Errorf("Did not get expected error setting invalid category")
 	}
 	if p.category == 0x0F {
@@ -51,7 +51,7 @@ func TestSetName(t *testing.T) {
 
 	// Test too long
 	err = p.SetName("ANameThatIsWayTOOLong!")
-	if err != ErrorInvalidName {
+	if err != ErrInvalidName {
 		t.Errorf("Did not get expected error setting too long name")
 		return
 	}
@@ -61,7 +61,7 @@ func TestSetName(t *testing.T) {
 
 	// Test blank/empty
 	err = p.SetName("")
-	if err != ErrorInvalidName {
+	if err != ErrInvalidName {
 		t.Errorf("Did not get expected error setting blank name")
 		return
 	}

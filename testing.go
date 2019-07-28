@@ -26,6 +26,10 @@ const (
 	validProgramVersion        = 1.18
 )
 
+var validPerformanceRef = patchRef{performanceT, memoryT, index(validPerformanceBank, validPerformanceLocation)}
+var invalidPerformanceRef = patchRef{performanceT, memoryT, index(invalidPerformanceBank, invalidPerformanceLocation)}
+var validProgramRef = patchRef{programT, memoryT, index(validProgramBank, validProgramLocation)}
+
 // If error is not nil, int holds location and error holds a regional comparison for debugging.
 // If error is nil, there was no difference.
 func LocationOfDifference(pb1, pb2 *[]byte) (int, error) {
@@ -107,7 +111,7 @@ func helperLoadFromFile(t *testing.T, memory *PatchMemory, filename string) {
 	if err != nil {
 		t.Fatal(fmt.Printf("Could not open %q: %q\n", filename, err))
 	}
-	memory.LoadFromFile(file)
+	memory.ImportFrom(file)
 }
 
 func tailBytes(buf []byte, n int) []byte {
