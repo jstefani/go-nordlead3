@@ -20,29 +20,19 @@ func printSummaryInfo(*nordlead3.PatchMemory) {
 	fmt.Printf("Not yet implemented. :(")
 }
 
-func printPerformance(memory *nordlead3.PatchMemory, bank int, location int, depth int) {
-	ref, ok := nordlead3.NewPatchRef(nordlead3.PerformanceT, nordlead3.MemoryT, bank-1, location-1)
-	if !ok {
-		fmt.Printf("Invalid location %d:%d\n", bank, location)
-		return
-	}
-	performance, err := memory.get(ref)
+func printPerformance(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
+	performance, err := memory.GetPerformance(ml)
 	if err != nil {
-		fmt.Printf("Performance %d:%d not initialized.\n", bank, location)
+		fmt.Println(err)
 		return
 	}
 	performance.PrintContents(depth)
 }
 
-func printProgram(memory *nordlead3.PatchMemory, bank int, location int, depth int) {
-	ref, ok := nordlead3.NewPatchRef(nordlead3.ProgramT, nordlead3.MemoryT, bank-1, location-1)
-	if !ok {
-		fmt.Printf("Invalid location %d:%d\n", bank, location)
-		return
-	}
-	program, err := memory.get(ref)
+func printProgram(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
+	program, err := memory.GetProgram(ml)
 	if err != nil {
-		fmt.Printf("Program %d:%d not initialized.\n", bank, location)
+		fmt.Println(err)
 		return
 	}
 	program.PrintContents(depth)
@@ -66,7 +56,7 @@ func runCommands(memory *nordlead3.PatchMemory) {
 		switch command {
 		case "export", "e":
 			if tblfn, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
-				export(memory, scanner, tblfn[0].(string), tblfn[1].(int), tblfn[2].(int), tblfn[3].(string))
+				export(memory, scanner, tblfn[0].(string), ml(tblfn[1].(int)-1, tblfn[2].(int)-1), tblfn[3].(string))
 			} else {
 				fmt.Println(" e | export  <prog|perf> <bank> <location> [<filename>]  : export bank and location to a file")
 			}
@@ -76,13 +66,13 @@ func runCommands(memory *nordlead3.PatchMemory) {
 			loadFiles(memory, args[1:])
 		case "perf":
 			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
-				printPerformance(memory, bld[0].(int), bld[1].(int), bld[2].(int))
+				printPerformance(memory, ml(bld[0].(int)-1, bld[1].(int)-1), bld[2].(int))
 			} else {
 				fmt.Printf(memory.SprintPerformances(true))
 			}
 		case "prog":
 			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
-				printProgram(memory, bld[0].(int), bld[1].(int), bld[2].(int))
+				printProgram(memory, ml(bld[0].(int)-1, bld[1].(int)-1), bld[2].(int))
 			} else {
 				fmt.Printf(memory.SprintPrograms(true))
 			}
@@ -91,7 +81,7 @@ func runCommands(memory *nordlead3.PatchMemory) {
 			return
 		case "rename", "r":
 			if tbln, ok := getArgs(args, []string{"string", "int", "int", "toEnd"}); ok {
-				rename(memory, tbln[0].(string), tbln[1].(int), tbln[2].(int), tbln[3].(string))
+				rename(memory, tbln[0].(string), ml(tbln[1].(int)-1, tbln[2].(int)-1), tbln[3].(string))
 			} else {
 				fmt.Println(" r | rename  <prog|perf> <bank> <location> <new name>    : rename the indicated program or performance")
 			}
@@ -152,7 +142,7 @@ func getArgs(args []string, expectations []string) (result []interface{}, ok boo
 	return result, ok
 }
 
-func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, bank, location int, filename string) {
+func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, ml nordlead3.MemoryLocation, filename string) {
 	var err error
 
 	if len(filename) == 0 {
@@ -172,16 +162,12 @@ func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, b
 
 	switch typ {
 	case "prog":
-		exportProgram(memory, bank, location, filename)
+		err = memory.ExportProgram(ml, filename)
+	case "perf":
+		err = memory.ExportPerformance(ml, filename)
 	}
-}
-
-func exportProgram(memory *nordlead3.PatchMemory, bank, location int, filename string) {
-	var err error
-
-	err = memory.ExportProgram(bank-1, location-1, filename)
 	if err != nil {
-		fmt.Printf("Error exporting program: %s\n", err)
+		fmt.Printf("Error exporting %s: %s\n", typ, err)
 	} else {
 		fmt.Println("Done!")
 	}
@@ -292,24 +278,34 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 	fmt.Printf("Found %v valid SysEx entries (%v invalid).\n\n", validFound, invalidFound)
 }
 
-func rename(memory *nordlead3.PatchMemory, typ string, bank, location int, newName string) {
+func rename(memory *nordlead3.PatchMemory, typ string, ml nordlead3.MemoryLocation, newName string) {
 	if pt, ok := ptype(typ); ok {
-		ref, ok := nordlead3.NewPatchRef(pt, nordlead3.MemoryT, bank-1, location-1)
-		if !ok {
-			fmt.Printf("Invalid location %d:%d\n", bank, location)
-			return
+		switch pt {
+		case nordlead3.PerformanceT:
+			p, err := memory.GetPerformance(ml)
+			if err != nil {
+				fmt.Printf("Performance %d:%d is not initialized.\n", ml.Bank+1, ml.Location+1)
+				break
+			}
+			err = p.SetName(newName)
+			if err != nil {
+				fmt.Printf("Error renaming %d:%d (%q): %s", ml.Bank, ml.Location, p.PrintableName(), err)
+				return
+			}
+			fmt.Println(p.Summary())
+		case nordlead3.ProgramT:
+			p, err := memory.GetProgram(ml)
+			if err != nil {
+				fmt.Printf("Program %d:%d is not initialized.\n", ml.Bank+1, ml.Location+1)
+				break
+			}
+			err = p.SetName(newName)
+			if err != nil {
+				fmt.Printf("Error renaming %d:%d (%q): %s", ml.Bank, ml.Location, p.PrintableName(), err)
+				return
+			}
+			fmt.Println(p.Summary())
 		}
-		p, err := memory.get(ref)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = p.SetName(newName)
-		if err != nil {
-			fmt.Printf("Error renaming %d:%d (%q): %s", bank, location, p.PrintableName(), err)
-			return
-		}
-		fmt.Println(p.Summary())
 	}
 }
 
@@ -320,10 +316,14 @@ func ptype(typ string) (pt nordlead3.PatchType, ok bool) {
 	case "perf":
 		pt = nordlead3.PerformanceT
 	default:
-		fmt.Printf("Cannot rename a %q. Please use `perf` or `prog`.", typ)
+		fmt.Printf("%q is not a valid type. Please use `perf` or `prog`.", typ)
 		return 0, false
 	}
 	return pt, true
+}
+
+func ml(bank, location int) nordlead3.MemoryLocation {
+	return nordlead3.MemoryLocation{bank, location}
 }
 
 func usage() {

@@ -233,19 +233,19 @@ func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	result = append(result, "\n***** PROGRAMS ******\n")
 
 	for i := 0; i < len(memory.slotPrograms); i++ {
-		result = append(result, fmt.Sprintf("\nSlot %d: %s\n", i+1, memory.slotPrograms[i].Summary()))
+		result = append(result, fmt.Sprintf("Slot %d: %s", i+1, memory.slotPrograms[i].Summary()))
 	}
 
 	for i, program := range memory.programs {
 		bank, location := bankloc(i)
 
-		if memory.initialized(patchRef{ProgramT, MemoryT, i}) || !omitBlank {
-			if bank != currBank {
-				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-				result = append(result, bank_header)
-				currBank = bank
-			}
+		if bank != currBank {
+			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d programs) ***", bank+1, memory.numInitialized(ProgramT, bank), bankSize)
+			result = append(result, bank_header)
+			currBank = bank
+		}
 
+		if memory.initialized(patchRef{ProgramT, MemoryT, i}) || !omitBlank {
 			result = append(result, fmt.Sprintf("   %3d : %s", location+1, program.Summary()))
 		}
 	}
@@ -258,18 +258,18 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 	currBank := -1 // won't match any bank
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
-	result = append(result, fmt.Sprintf("\nSlot: %s\n", memory.slotPerformance.Summary()))
+	result = append(result, fmt.Sprintf("Slot: %s", memory.slotPerformance.Summary()))
 
 	for i, perf := range memory.performances {
 		bank, location := bankloc(i)
 
-		if memory.initialized(patchRef{PerformanceT, MemoryT, i}) || !omitBlank {
-			if bank != currBank {
-				bank_header := fmt.Sprintf("\n*** Bank %v ***\n", bank+1)
-				result = append(result, bank_header)
-				currBank = bank
-			}
+		if bank != currBank {
+			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d performances) ***", bank+1, memory.numInitialized(PerformanceT, bank), bankSize)
+			result = append(result, bank_header)
+			currBank = bank
+		}
 
+		if memory.initialized(patchRef{PerformanceT, MemoryT, i}) || !omitBlank {
 			result = append(result, fmt.Sprintf("   %3d : %s", location+1, perf.Summary()))
 		}
 	}
@@ -575,6 +575,19 @@ func (memory *PatchMemory) initialized(ref patchRef) (result bool) {
 	}
 
 	return
+}
+
+func (memory *PatchMemory) numInitialized(pt PatchType, bank int) int {
+	var result int
+	offset := bank * bankSize
+
+	for i := 0; i < bankSize; i++ {
+		if memory.initialized(patchRef{pt, MemoryT, offset + i}) {
+			result++
+		}
+	}
+
+	return result
 }
 
 // panics if given an invalid patchRef
