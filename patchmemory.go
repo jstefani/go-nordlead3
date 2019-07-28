@@ -33,27 +33,37 @@ type PatchMemory struct {
 }
 
 func (memory *PatchMemory) CopyPerformanceToSlot(ml MemoryLocation) error {
-	src := []patchRef{patchRef{PerformanceT, MemoryT, ml.index()}}
+	src := patchRef{PerformanceT, MemoryT, ml.index()}
 	dest := performanceSlotRef
-	return memory.transfer(src, dest, copyM)
+	return memory.copy(src, dest)
 }
 
 func (memory *PatchMemory) CopyProgramToSlot(ml MemoryLocation, index int) error {
-	src := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
+	src := patchRef{ProgramT, MemoryT, ml.index()}
 	dest := patchRef{ProgramT, SlotT, index}
-	return memory.transfer(src, dest, copyM)
+	return memory.copy(src, dest)
 }
 
 func (memory *PatchMemory) CopySlotToPerformance(ml MemoryLocation) error {
-	src := []patchRef{performanceSlotRef}
+	src := performanceSlotRef
 	dest := patchRef{PerformanceT, MemoryT, ml.index()}
-	return memory.transfer(src, dest, copyM)
+	return memory.copy(src, dest)
 }
 
 func (memory *PatchMemory) CopySlotToProgram(index int, ml MemoryLocation) error {
-	src := []patchRef{patchRef{ProgramT, SlotT, index}}
+	src := patchRef{ProgramT, SlotT, index}
 	dest := patchRef{ProgramT, MemoryT, ml.index()}
-	return memory.transfer(src, dest, copyM)
+	return memory.copy(src, dest)
+}
+
+func (memory *PatchMemory) DeletePerformance(ml MemoryLocation) {
+	ref := patchRef{PerformanceT, MemoryT, ml.index()}
+	memory.clear(ref)
+}
+
+func (memory *PatchMemory) DeleteProgram(ml MemoryLocation) {
+	ref := patchRef{ProgramT, MemoryT, ml.index()}
+	memory.clear(ref)
 }
 
 func (memory *PatchMemory) ExportAllPerformances(filename string) error {
@@ -221,6 +231,11 @@ func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	currBank := -1 // won't match any bank
 
 	result = append(result, "\n***** PROGRAMS ******\n")
+
+	for i := 0; i < len(memory.slotPrograms); i++ {
+		result = append(result, fmt.Sprintf("\nSlot %d: %s\n", i+1, memory.slotPrograms[i].Summary()))
+	}
+
 	for i, program := range memory.programs {
 		bank, location := bankloc(i)
 
@@ -243,6 +258,7 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 	currBank := -1 // won't match any bank
 
 	result = append(result, "\n***** PERFORMANCES ******\n")
+	result = append(result, fmt.Sprintf("\nSlot: %s\n", memory.slotPerformance.Summary()))
 
 	for i, perf := range memory.performances {
 		bank, location := bankloc(i)
@@ -284,6 +300,35 @@ func (memory *PatchMemory) clear(ref patchRef) {
 			*memory.progPtr(ref) = nil
 		}
 	}
+}
+
+func (memory *PatchMemory) copy(src patchRef, dest patchRef) error {
+	if src.patchType != dest.patchType {
+		return ErrXferTypeMismatch
+	}
+	if !src.valid() || !dest.valid() {
+		return ErrInvalidLocation
+	}
+	if !memory.initialized(src) {
+		return ErrUninitialized
+	}
+	if memory.initialized(dest) && dest.source != SlotT {
+		return ErrMemoryOccupied // allow overwriting slots silently, they're temporary
+	}
+
+	switch src.patchType {
+	case PerformanceT:
+		srcPtr := memory.perfPtr(src)
+		destPtr := memory.perfPtr(dest)
+		copy := **srcPtr
+		*destPtr = &copy
+	case ProgramT:
+		srcPtr := memory.progPtr(src)
+		destPtr := memory.progPtr(dest)
+		copy := **srcPtr
+		*destPtr = &copy
+	}
+	return nil
 }
 
 // Formats a patch as sysex in NL3 format

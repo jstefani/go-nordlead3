@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestLoadValidPerformanceFromSysex(t *testing.T) {
+func TestImportPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := validPerformanceSysex(t)
 
@@ -30,7 +30,7 @@ func TestLoadValidPerformanceFromSysex(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
+func TestImportInvalidPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := invalidPerformanceSysex(t)
 
@@ -47,7 +47,7 @@ func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
 	}
 }
 
-func TestLoadProgramFromSysex(t *testing.T) {
+func TestImportProgram(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := validProgramSysex(t)
 
@@ -72,29 +72,7 @@ func TestLoadProgramFromSysex(t *testing.T) {
 	}
 }
 
-func TestDumpProgramToSysex(t *testing.T) {
-	memory := new(PatchMemory)
-	inputSysex := validProgramSysex(t)
-	err := memory.Import(inputSysex)
-	if err != nil {
-		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
-	}
-
-	outputSysex, err := memory.export(validProgramRef)
-	if err != nil {
-		t.Errorf("Error dumping program: %q", err)
-	}
-
-	binaryExpectEqual(t, &inputSysex, outputSysex)
-
-	// test negative case
-	outputSysex, err = memory.export(patchRef{ProgramT, MemoryT, index(validProgramBank+1, validProgramLocation+1)})
-	if err != ErrUninitialized {
-		t.Errorf("Invalid error, expected ErrUninitialized, got %q", err)
-	}
-}
-
-func TestDumpPerformanceToSysex(t *testing.T) {
+func TestExportPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	inputSysex := validPerformanceSysex(t)
 	err := memory.Import(inputSysex)
@@ -112,6 +90,28 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 	// test negative case
 	uninitRef := patchRef{PerformanceT, MemoryT, index(validPerformanceBank, validPerformanceLocation+1)}
 	outputSysex, err = memory.export(uninitRef)
+	if err != ErrUninitialized {
+		t.Errorf("Invalid error, expected ErrUninitialized, got %q", err)
+	}
+}
+
+func TestExportProgram(t *testing.T) {
+	memory := new(PatchMemory)
+	inputSysex := validProgramSysex(t)
+	err := memory.Import(inputSysex)
+	if err != nil {
+		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
+	}
+
+	outputSysex, err := memory.export(validProgramRef)
+	if err != nil {
+		t.Errorf("Error dumping program: %q", err)
+	}
+
+	binaryExpectEqual(t, &inputSysex, outputSysex)
+
+	// test negative case
+	outputSysex, err = memory.export(patchRef{ProgramT, MemoryT, index(validProgramBank+1, validProgramLocation+1)})
 	if err != ErrUninitialized {
 		t.Errorf("Invalid error, expected ErrUninitialized, got %q", err)
 	}
@@ -229,6 +229,131 @@ func TestSwapPrograms(t *testing.T) {
 	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
 }
 
+func TestCopyPerformanceToSlot(t *testing.T) {
+	memory := populatedMemory(t, "PerfBank1.syx")
+
+	// A. Copy a valid performance to the slot
+	ml := MemoryLocation{0, 42}
+	err := memory.CopyPerformanceToSlot(ml)
+	src := patchRef{PerformanceT, MemoryT, ml.index()}
+	dest := performanceSlotRef
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// B. Copy a performance to the slot when the slot already has a performance
+	ml = MemoryLocation{0, 43}
+	err = memory.CopyPerformanceToSlot(ml)
+	src = patchRef{PerformanceT, MemoryT, ml.index()}
+	dest = performanceSlotRef
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// C. Copy an uninitialized performance to the slot
+	ml = MemoryLocation{1, 42}
+	err = memory.CopyPerformanceToSlot(ml)
+	src = patchRef{PerformanceT, MemoryT, ml.index()}
+	dest = performanceSlotRef
+	expectUnsuccessfulCopy(t, memory, src, dest, err, ErrUninitialized)
+
+	// TODO: Invalid and other edge cases not tested at present.
+}
+
+func TestCopyPerformanceFromSlot(t *testing.T) {
+	memory := populatedMemory(t, "PerfSlot.syx")
+
+	// A. Copy a valid performance from the slot
+	ml := MemoryLocation{0, 42}
+	err := memory.CopySlotToPerformance(ml)
+	src := performanceSlotRef
+	dest := patchRef{PerformanceT, MemoryT, ml.index()}
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// B. Copy from slot when slot is uninitialized
+	memory.slotPerformance = nil
+	ml = MemoryLocation{1, 42}
+	err = memory.CopySlotToPerformance(ml)
+	src = performanceSlotRef
+	dest = patchRef{PerformanceT, MemoryT, ml.index()}
+	expectUnsuccessfulCopy(t, memory, src, dest, err, ErrUninitialized)
+
+	// TODO: Invalid and other edge cases not tested at present.
+}
+
+func TestCopyProgramToSlot(t *testing.T) {
+	memory := populatedMemory(t, "ProgBank1.syx")
+	targetSlot := 1
+
+	// A. Copy a valid program to the slot
+	ml := MemoryLocation{0, 42}
+	err := memory.CopyProgramToSlot(ml, targetSlot)
+	src := patchRef{ProgramT, MemoryT, ml.index()}
+	dest := patchRef{ProgramT, SlotT, targetSlot}
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// B. Copy a program to the slot when the slot already has a program
+	ml = MemoryLocation{0, 43}
+	src = patchRef{ProgramT, MemoryT, ml.index()}
+	dest = patchRef{ProgramT, SlotT, targetSlot}
+	err = memory.CopyProgramToSlot(ml, targetSlot)
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// C. Copy an uninitialized program to the slot, expect failure
+	ml = MemoryLocation{1, 42}
+	err = memory.CopyProgramToSlot(ml, targetSlot)
+	expectUnsuccessfulCopy(t, memory, src, dest, err, ErrUninitialized)
+}
+
+func TestCopyProgramFromSlot(t *testing.T) {
+	memory := populatedMemory(t, "ProgBank1.syx")
+	targetSlot := 1
+
+	// Setup: stick a program in the slot, we test this elsewhere, so assume it works
+	ml := MemoryLocation{0, 42}
+	memory.CopyProgramToSlot(ml, targetSlot)
+
+	// A. Copy a valid program from the slot to a blank destination
+	ml = MemoryLocation{1, 42}
+	err := memory.CopySlotToProgram(targetSlot, ml)
+	src := patchRef{ProgramT, SlotT, targetSlot}
+	dest := patchRef{ProgramT, MemoryT, ml.index()}
+	expectSuccessfulCopy(t, memory, src, dest, err)
+
+	// B. Copy a valid program from the slot to an initialized destination, expect error
+	ml = MemoryLocation{0, 43}
+	err = memory.CopySlotToProgram(targetSlot, ml)
+	src = patchRef{ProgramT, SlotT, targetSlot}
+	dest = patchRef{ProgramT, MemoryT, ml.index()}
+	expectUnsuccessfulCopy(t, memory, src, dest, err, ErrMemoryOccupied)
+
+	// C. Copy a program from a slot that is not initialized, expect error
+	ml = MemoryLocation{1, 42}
+	targetSlot = 0
+	err = memory.CopySlotToProgram(targetSlot, ml)
+	src = patchRef{ProgramT, SlotT, targetSlot}
+	dest = patchRef{ProgramT, MemoryT, ml.index()}
+	expectUnsuccessfulCopy(t, memory, src, dest, err, ErrUninitialized)
+}
+
+func TestDeletePerformance(t *testing.T) {
+	memory := populatedMemory(t, "PerfBank1.syx")
+	targetLocation := MemoryLocation{0, 42}
+	targetRef := patchRef{PerformanceT, MemoryT, targetLocation.index()}
+	requireInitialized(t, memory, targetRef)
+	memory.DeletePerformance(targetLocation)
+	if p, err := memory.get(targetRef); err != ErrUninitialized {
+		t.Errorf("Attempted to delete %s but retrieved %s after deletion", targetRef.String(), p.Summary())
+	}
+}
+
+func TestDeleteProgram(t *testing.T) {
+	memory := populatedMemory(t, "ProgBank1.syx")
+	targetLocation := MemoryLocation{0, 42}
+	targetRef := patchRef{ProgramT, MemoryT, targetLocation.index()}
+	requireInitialized(t, memory, targetRef)
+	memory.DeleteProgram(targetLocation)
+	if p, err := memory.get(targetRef); err != ErrUninitialized {
+		t.Errorf("Attempted to delete %s but retrieved %s after deletion", targetRef.String(), p.Summary())
+	}
+}
+
 // Helpers =======================================================
 
 func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, startLocation, numToMove int, permitBlank bool) (refs []patchRef) {
@@ -253,6 +378,23 @@ func populatedMemory(t *testing.T, filename string) *PatchMemory {
 	memory := new(PatchMemory)
 	helperLoadFromFile(t, memory, filename)
 	return memory
+}
+
+func expectSuccessfulCopy(t *testing.T, memory *PatchMemory, src, dest patchRef, err error) {
+	if err != nil {
+		t.Errorf("Got error copying performance to slot: %s", err)
+	}
+	from, _ := memory.get(src)
+	to, _ := memory.get(dest)
+	if to == nil {
+		t.Errorf("Copy seems to have erased the original")
+	}
+	if from == to {
+		t.Errorf("Duplicate pointers, did not copy value")
+	}
+	if from.Summary() != to.Summary() {
+		t.Errorf("Copy failed: expected %s, got %s", from.Summary(), to.Summary())
+	}
 }
 
 func expectSuccessfulSwap(t *testing.T, memory *PatchMemory, aref patchRef, bref patchRef) {
@@ -324,9 +466,9 @@ func expectSuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRef,
 	}
 }
 
-func requireUninitialized(t *testing.T, memory *PatchMemory, ref patchRef) {
-	if p, err := memory.get(ref); err != ErrUninitialized {
-		t.Fatalf("Expected %s to be uninitialized, but it contained %s", ref.String(), p.Summary())
+func expectUnsuccessfulCopy(t *testing.T, memory *PatchMemory, src, dest patchRef, err error, expectedError error) {
+	if err != expectedError {
+		t.Errorf("Expected %q when copying uninitialized patch, but got %q", expectedError, err)
 	}
 }
 
@@ -395,6 +537,18 @@ func expectUnsuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRe
 				t.Fatalf("Failed copy left destination location %d:%d initialized when it should be blank", src[i].bank(), src[i].location())
 			}
 		}
+	}
+}
+
+func requireInitialized(t *testing.T, memory *PatchMemory, ref patchRef) {
+	if _, err := memory.get(ref); err != nil {
+		t.Fatalf("Expected %s to be initialized, but got error %s", ref.String(), err)
+	}
+}
+
+func requireUninitialized(t *testing.T, memory *PatchMemory, ref patchRef) {
+	if p, err := memory.get(ref); err != ErrUninitialized {
+		t.Fatalf("Expected %s to be uninitialized, but it contained %s", ref.String(), p.Summary())
 	}
 }
 

@@ -3,15 +3,10 @@ package nordlead3
 /*
 TODO:
 
- - Be able to print and dump the slot content
  - Expand slot concept to nl3edit too (move, rename, delete)
- - Write a bunch of useful tests for the core methods
-     - Test the move to/from slot methods
-     - Test the delete methods
-     - Test Swap()
- - Create useful functions for manipulating memory:
-     - Insert a location (move following locations down until an empty location is hit, or return an error if there's no room)
+ - Rewrite exporters to take an io.Writer instead of doing file ops directly
  - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
+ - Add two sane init patches (an init and an initFM), both with the right sync bits set.
 */
 
 import (
