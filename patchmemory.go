@@ -50,8 +50,8 @@ func (memory *PatchMemory) ExportAllPrograms(filename string) error {
 	return memory.exportLocations(refs, filename)
 }
 
-func (memory *PatchMemory) ExportPerformance(bank, location int, filename string) error {
-	refs := []patchRef{patchRef{PerformanceT, MemoryT, index(bank, location)}}
+func (memory *PatchMemory) ExportPerformance(ml MemoryLocation, filename string) error {
+	refs := []patchRef{patchRef{PerformanceT, MemoryT, ml.index()}}
 	return memory.exportLocations(refs, filename)
 }
 
@@ -64,8 +64,8 @@ func (memory *PatchMemory) ExportPerformanceBank(bank int, filename string) erro
 	return memory.exportLocations(refs, filename)
 }
 
-func (memory *PatchMemory) ExportProgram(bank, location int, filename string) error {
-	refs := []patchRef{patchRef{ProgramT, MemoryT, index(bank, location)}}
+func (memory *PatchMemory) ExportProgram(ml MemoryLocation, filename string) error {
+	refs := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
 	return memory.exportLocations(refs, filename)
 }
 
