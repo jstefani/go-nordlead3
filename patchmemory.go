@@ -353,11 +353,7 @@ func (memory *PatchMemory) exportLocations(refs []patchRef, writer io.Writer) er
 	var exportdata []byte
 
 	for _, ref := range refs {
-		fdata, err := memory.export(patchRef{PerformanceT, MemoryT, ref.index})
-		if err != nil {
-			return err
-		}
-
+		fdata, err := memory.export(patchRef{ref.patchType, MemoryT, ref.index})
 		if err == ErrUninitialized {
 			continue // skip silently
 		} else if err != nil {

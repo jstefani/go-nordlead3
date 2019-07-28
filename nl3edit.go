@@ -1,5 +1,5 @@
 // +build ignore
-// run with `go run nl3edit.go <args>`
+// run with `go run nl3edit.go <optional sysex filenames to preload>`
 
 package main
 
@@ -33,15 +33,21 @@ func runCommands(memory *nordlead3.PatchMemory) {
 		// Evaluate
 		switch command {
 		case "export", "e":
-			if tblfn, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
-				export(memory, scanner, tblfn[0].(string), ml(tblfn[1].(int)-1, tblfn[2].(int)-1), tblfn[3].(string))
-			} else {
-				fmt.Println(" e | export  <prog|perf> <bank> <location> [<filename>]  : export bank and location to a file")
-			}
+			export(memory, scanner, args[1:])
 		case "help", "h":
 			help()
 		case "load", "l":
 			loadFiles(memory, args[1:])
+		case "move", "m":
+			if len(args) > 1 {
+				if typ, ok := ptype(args[1]); ok {
+					movePrompted(memory, scanner, typ)
+				} else {
+					fmt.Println(" m | move    <prog|perf>                                 : enter the move tool for programs or performances")
+				}
+			} else {
+				fmt.Println(" m | move    <prog|perf>                                 : enter the move tool for programs or performances")
+			}
 		case "perf":
 			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
 				printPerformance(memory, ml(bld[0].(int)-1, bld[1].(int)-1), bld[2].(int))
@@ -75,6 +81,7 @@ func runCommands(memory *nordlead3.PatchMemory) {
 
 // Expectations are an array of expected types and whether or not that type is optional
 // All optional arguments must go at the end and are assigned in order, no heuristics here!
+// A literal string match can be indicated indicating `string literal <literalval>`
 // Note: A "toEnd" type is provided to capture the entire rest of the argument line as a single string
 func getArgs(args []string, expectations []string) (result []interface{}, ok bool) {
 	ok = true
@@ -87,8 +94,8 @@ func getArgs(args []string, expectations []string) (result []interface{}, ok boo
 			optional = true
 		}
 
-		if len(args) > i+1 {
-			curr := args[i+1]
+		if len(args) > i {
+			curr := args[i]
 
 			switch exptype {
 			case "int":
@@ -101,9 +108,13 @@ func getArgs(args []string, expectations []string) (result []interface{}, ok boo
 			case "string":
 				result = append(result, curr)
 			case "toEnd":
-				result = append(result, strings.Join(args[i+1:], " "))
-			default:
-				// skip for now, it's unsupported
+				result = append(result, strings.Join(args[i:], " "))
+			default: // string literal
+				if curr == exptype {
+					// ok, don't add to received
+				} else {
+					ok = false
+				}
 			}
 		} else if optional {
 			switch exptype {
@@ -200,40 +211,34 @@ func ml(bank, location int) nordlead3.MemoryLocation {
 
 // Command processing functions
 
-func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, ml nordlead3.MemoryLocation, filename string) {
+func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, args []string) {
 	var err error
 
-	if len(filename) == 0 {
-		filename, err = promptValidFilename(scanner, false)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+	if tblfn, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
+		err = exportOne(memory, scanner, tblfn[0].(string), ml(tblfn[1].(int)-1, tblfn[2].(int)-1), tblfn[3].(string))
+	} else if fn, ok := getArgs(args, []string{"perf", "all", "string opt"}); ok {
+		err = exportAllPerf(memory, scanner, fn[0].(string))
+	} else if fn, ok := getArgs(args, []string{"prog", "all", "string opt"}); ok {
+		err = exportAllProg(memory, scanner, fn[0].(string))
+	} else if bfn, ok := getArgs(args, []string{"perf", "bank", "int", "string opt"}); ok {
+		err = exportPerfBank(memory, scanner, bfn[0].(int)-1, bfn[1].(string))
+	} else if bfn, ok := getArgs(args, []string{"prog", "bank", "int", "string opt"}); ok {
+		err = exportProgBank(memory, scanner, bfn[0].(int)-1, bfn[1].(string))
+	} else {
+		exportHelp()
 	}
 
-	// Expand ~ character first
-	filename, err = homedir.Expand(filename)
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Printf("Export error: %s\n", err)
 	}
+}
 
-	_, err = os.Stat(filename)
-	if !os.IsNotExist(err) {
-		if err != nil {
-			fmt.Printf("Error exporting %s: %s\n", typ, err)
-			return
-		}
-		fmt.Printf("Aborting: %q exists, not overwriting.\n", filename)
-		return
-	}
-
-	file, err := os.Create(filename)
-	fmt.Printf("Preparing %q\n", filename)
+func exportOne(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, ml nordlead3.MemoryLocation, filename string) error {
+	file, err := createFile(filename, scanner)
 	if err != nil {
-		fmt.Printf("Error exporting %s: %s\n", typ, err)
-		return
+		return err
 	}
+	defer file.Close()
 
 	switch typ {
 	case "prog":
@@ -241,11 +246,87 @@ func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, m
 	case "perf":
 		err = memory.ExportPerformance(ml, file)
 	}
+	return err
+}
+
+func exportAllPerf(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, filename string) error {
+	var err error
+
+	file, err := createFile(filename, scanner)
 	if err != nil {
-		fmt.Printf("Error exporting %s: %s\n", typ, err)
-	} else {
-		fmt.Println("Done!")
+		return err
 	}
+	defer file.Close()
+
+	return memory.ExportAllPerformances(file)
+}
+
+func exportAllProg(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, filename string) error {
+	var err error
+
+	file, err := createFile(filename, scanner)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return memory.ExportAllPrograms(file)
+}
+
+func exportPerfBank(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, bank int, filename string) error {
+	var err error
+
+	file, err := createFile(filename, scanner)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return memory.ExportPerformanceBank(bank, file)
+}
+
+func exportProgBank(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, bank int, filename string) error {
+	var err error
+
+	file, err := createFile(filename, scanner)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return memory.ExportProgramBank(bank, file)
+}
+
+func createFile(filename string, scanner *bufio.Scanner) (*os.File, error) {
+	var err error
+
+	if filename == "" {
+		filename, err = promptValidFilename(scanner, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Expand ~ character first
+	filename, err = homedir.Expand(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = os.Stat(filename)
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New(fmt.Sprintf("Aborting: %q exists, not overwriting.\n", filename))
+	}
+
+	file, err := os.Create(filename)
+	fmt.Printf("Preparing %q\n", filename)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
 func loadFiles(memory *nordlead3.PatchMemory, filenames []string) {
@@ -291,6 +372,90 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 	}
 
 	fmt.Printf("Found %v valid SysEx entries (%v invalid).\n\n", validFound, invalidFound)
+}
+
+func movePrompted(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ nordlead3.PatchType) {
+	var src []nordlead3.MemoryLocation
+	var dest nordlead3.MemoryLocation
+	var err error
+
+	for {
+		fmt.Println("Currently selected programs to move: ", src)
+		args := getPrompted(fmt.Sprintf("Choose a source location to add to the list (p: print %ss, s: sequential from last, enter: continue, a: abort)? ", typ.String()), scanner)
+		if len(args) == 0 {
+			break
+		}
+		if args[0] == "a" {
+			fmt.Println("Ok, we'll try it again later!")
+			return
+		}
+		if args[0] == "p" {
+			switch typ {
+			case nordlead3.PerformanceT:
+				fmt.Println(memory.SprintPerformances(true))
+			case nordlead3.ProgramT:
+				fmt.Println(memory.SprintPrograms(true))
+			}
+			continue
+		}
+		if args[0] == "s" {
+			if bl, ok := getArgs(args, []string{"string", "int", "int"}); ok {
+				end := ml(bl[1].(int)-1, bl[2].(int)-1)
+				if len(src) == 0 {
+					fmt.Println("Cannot span without a starting location. Enter a normal location first, then try the span again.")
+				} else if src[len(src)-1].Location >= end.Location {
+					fmt.Println("End must be after source numerically. Spanning backwards is unsupported.")
+				} else {
+					if end.Bank == src[len(src)-1].Bank {
+						for i := src[len(src)-1].Location + 1; i <= end.Location; i++ {
+							src = append(src, ml(end.Bank, i))
+						}
+					} else {
+						fmt.Println("Cannot span banks, sorry.")
+					}
+				}
+			} else {
+				fmt.Println("If you want a sequence of locations, enter s <bank> <location> with the position of the last location to be in the sequence.")
+			}
+			continue
+		}
+		if bl, ok := getArgs(args, []string{"int", "int"}); ok {
+			src = append(src, ml(bl[0].(int)-1, bl[1].(int)-1))
+		} else {
+			fmt.Println(args, len(args))
+			fmt.Println("I couldn't figure out what you meant, please try again with the format <bank> <location>")
+		}
+	}
+	for {
+		args := getPrompted(fmt.Sprintf("Move to which location (p to print current %ss, enter to abort)? ", typ.String()), scanner)
+		if len(args) == 0 {
+			fmt.Println("Ok, we'll try it again later!")
+			return
+		}
+		if args[0] == "p" {
+			switch typ {
+			case nordlead3.PerformanceT:
+				memory.SprintPerformances(true)
+			case nordlead3.ProgramT:
+				memory.SprintPrograms(true)
+			}
+		}
+		if bl, ok := getArgs(args, []string{"int", "int"}); ok {
+			dest = ml(bl[0].(int)-1, bl[1].(int)-1)
+			break
+		}
+	}
+	switch typ {
+	case nordlead3.PerformanceT:
+		err = memory.MovePerformances(src, dest)
+	case nordlead3.ProgramT:
+		err = memory.MovePrograms(src, dest)
+	}
+	if err != nil {
+		fmt.Printf("Error moving %s: %q\n", typ.String(), err)
+	} else {
+		fmt.Printf("Moved!") // Todo could make a friendly summary or something.
+	}
 }
 
 func rename(memory *nordlead3.PatchMemory, typ string, ml nordlead3.MemoryLocation, newName string) {
@@ -348,12 +513,19 @@ func usage() {
 
 func help() {
 	fmt.Println("Available commands are: ")
-	fmt.Println(" h | help                                                : print this help reference")
-	fmt.Println(" e | export  <prog|perf> <bank> <location> [<filename>]  : export bank and location to a file")
-	fmt.Println(" l | load    <filename> [<filename> ...]                 : load the requested file into memory")
-	fmt.Println(" r | rename  <prog|perf> <bank> <location> <new name>    : rename the indicated program or performance")
-	fmt.Println("     perf    [<bank> <location>] [<depth>]               : print details of performance at that location")
-	fmt.Println("     prog    [<bank> <location>] [<depth>]               : print details of program at that location")
+	fmt.Println(" help   | h                                              : print this help reference")
+	exportHelp()
+	fmt.Println(" load   | l  <filename> [<filename> ...]                 : load the requested file into memory")
+	fmt.Println(" move   | m  <prog|perf>                                 : enter the move tool for programs or performances")
+	fmt.Println(" rename | r  <prog|perf> <bank> <location> <new name>    : rename the indicated program or performance")
+	fmt.Println(" perf        [<bank> <location>] [<depth>]               : print details of performance at that location")
+	fmt.Println(" prog        [<bank> <location>] [<depth>]               : print details of program at that location")
+}
+
+func exportHelp() {
+	fmt.Println(" export | e  <prog|perf> <bank> <location> [<filename>]  : export bank and location to a file")
+	fmt.Println("             <prog|perf> bank <bank> [<filename>]        : export entire bank to a file")
+	fmt.Println("             all <prog|perf>                             : export all progs/perfs to a file")
 }
 
 func main() {
