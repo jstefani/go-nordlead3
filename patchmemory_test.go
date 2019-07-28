@@ -117,135 +117,53 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 	}
 }
 
-// TODO: This is a mess, clean it up!
 func TestMovePrograms(t *testing.T) {
-	var src []patchRef
-	var quicksummary []string
-	var dest []patchRef
-	var err error
 	// populate a PatchMemory
-	memory := new(PatchMemory)
+	memory := populatedMemory(t, "ProgBank1.syx")
 	startLoc := 42
 	numToMove := 27
 
-	helperLoadFromFile(t, memory, "ProgBank1.syx")
-
-	src = buildRefList(t, memory, ProgramT, 0, startLoc, numToMove, false)
-	quicksummary = summarize(memory, src)
+	src := buildRefList(t, memory, ProgramT, 0, startLoc, numToMove, false)
 
 	// Test successful moving to bank 2, same startLoc
-	dest = buildRefList(t, memory, ProgramT, 1, startLoc, numToMove, true)
-	err = memory.transfer(src, dest[0], moveM)
-	if err != nil {
-		t.Fatalf("Failure moving patches: %s", err)
-	}
-	for i := 0; i < numToMove; i++ {
-		_, err = memory.get(src[i])
-		if err != ErrUninitialized {
-			t.Fatalf("Move left original location %d:%d initialized", 0, i)
-		}
-		moved, _ := memory.get(dest[i])
-		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
-		if msum != quicksummary[i] {
-			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
-		}
-	}
+	dest := patchRef{ProgramT, MemoryT, index(1, startLoc)}
+	expectSuccessfulTransfer(t, memory, src, dest, moveM)
 
 	// Test unsuccessful moving to end of range, expect overflow error
 	src = buildRefList(t, memory, ProgramT, 1, startLoc, numToMove, false)
-	quicksummary = summarize(memory, src)
-	oneOverMax := bankSize - numToMove + 1
-	dest = buildRefList(t, memory, ProgramT, numProgBanks-1, oneOverMax, numToMove, true)
-
-	err = memory.transfer(src, dest[0], moveM)
-	if err != ErrMemoryOverflow {
-		t.Errorf("Expected error ErrorMemoryOverflow, got: %s", err)
-	}
-
-	// Validate that it put everything back
-	for i := 0; i < numToMove; i++ {
-		orig, err := memory.get(src[i])
-		if err == ErrUninitialized {
-			t.Fatalf("Failed move left original %d:%d uninitialized", src[i].bank(), src[i].location())
-		}
-		msum := fmt.Sprintf("%s:%f", orig.PrintableName(), orig.Version())
-		if msum != quicksummary[i] {
-			t.Errorf("Did not correctly restore patch after failed move: Expected %q, got %q", quicksummary[i], msum)
-		}
-	}
+	oneOverMax := (numProgBanks+1)*bankSize - numToMove + 1
+	dest = patchRef{ProgramT, MemoryT, oneOverMax}
+	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOverflow, moveM)
 
 	// Test unsuccessful moving to occupied range
-	err = memory.transfer(src, patchRef{ProgramT, MemoryT, index(0, 127)}, moveM)
-	if err != ErrMemoryOccupied {
-		t.Errorf("Expected error ErrorMemoryOccupied, got %s", err)
-	}
+	dest = patchRef{ProgramT, MemoryT, index(0, 127)}
+	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOccupied, moveM)
 }
 
-// TODO: This is a mess, clean it up!
 func TestMovePerformances(t *testing.T) {
-	var src []patchRef
-	var quicksummary []string
-	var dest []patchRef
-	var err error
 	// populate a PatchMemory
-	memory := new(PatchMemory)
+	memory := populatedMemory(t, "PerfBank1.syx")
 	startBank := 0
 	startLoc := 42
 	numToMove := 27
 	destBank := 1
 
-	helperLoadFromFile(t, memory, "PerfBank1.syx")
-
-	src = buildRefList(t, memory, PerformanceT, startBank, startLoc, numToMove, false)
-	quicksummary = summarize(memory, src)
-
 	// Test successful moving to bank 2, same startLoc
-	dest = buildRefList(t, memory, PerformanceT, destBank, startLoc, numToMove, true)
-	err = memory.transfer(src, dest[0], moveM)
-	if err != nil {
-		t.Fatalf("Failure moving patches: %s", err)
-	}
-	for i := 0; i < numToMove; i++ {
-		_, err = memory.get(src[i])
-		if err != ErrUninitialized {
-			t.Fatalf("Move left original location %d:%d initialized", startBank, i)
-		}
-		moved, _ := memory.get(dest[i])
-		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
-		if msum != quicksummary[i] {
-			t.Fatalf("Did not correctly move patch: Expected %q, got %q", quicksummary[i], msum)
-		}
-	}
+	src := buildRefList(t, memory, PerformanceT, startBank, startLoc, numToMove, false)
+	dest := patchRef{PerformanceT, MemoryT, index(destBank, startLoc)}
+	expectSuccessfulTransfer(t, memory, src, dest, moveM)
 
 	// Test unsuccessful moving to end of range, expect overflow error
 	src = buildRefList(t, memory, PerformanceT, destBank, startLoc, numToMove, false)
-	quicksummary = summarize(memory, src)
-	oneOverMax := (numPerfBanks*bankSize - 1) - (numToMove - 2)
-	err = memory.transfer(src, patchRef{PerformanceT, MemoryT, oneOverMax}, moveM)
-	if err != ErrMemoryOverflow {
-		t.Errorf("Expected error ErrorMemoryOverflow, got: %s", err)
-	}
-
-	// Validate that it put everything back
-	for i := 0; i < numToMove; i++ {
-		moved, err := memory.get(src[i])
-		if err == ErrUninitialized {
-			t.Fatalf("Failed move left original %d:%d uninitialized", 0, i)
-		}
-		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
-		if msum != quicksummary[i] {
-			t.Errorf("Did not correctly restore patch after failed move: Expected %q, got %q", quicksummary[i], msum)
-		}
-	}
+	oneOverMax := (numPerfBanks+1)*bankSize - numToMove + 1
+	dest = patchRef{PerformanceT, MemoryT, oneOverMax}
+	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOverflow, moveM)
 
 	// Test unsuccessful moving to occupied range
-	err = memory.transfer(src, patchRef{PerformanceT, MemoryT, index(destBank, startLoc+numToMove-1)}, moveM)
-	if err != ErrMemoryOccupied {
-		t.Errorf("Expected error ErrorMemoryOccupied, got %s", err)
-	}
+	dest = patchRef{PerformanceT, MemoryT, index(destBank, startLoc+numToMove-1)}
+	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOccupied, moveM)
 }
 
-// TODO: This is a mess, clean it up!
 func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, startLocation, numToMove int, permitBlank bool) (refs []patchRef) {
 	startLoc := index(startBank, startLocation)
 
@@ -262,6 +180,68 @@ func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, st
 		t.Fatalf("Test range %s %d:%d-%d:%d does not contain a sufficient quantity of initialized patches.", pt.String(), startBank, startLocation, bank(index(startBank, startLocation)+numToMove), location(index(startBank, startLocation)+numToMove))
 	}
 	return
+}
+
+func populatedMemory(t *testing.T, filename string) *PatchMemory {
+	memory := new(PatchMemory)
+	helperLoadFromFile(t, memory, filename)
+	return memory
+}
+
+func expectSuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRef, dest patchRef, mode transferMode) {
+	dests := buildRefList(t, memory, dest.patchType, dest.bank(), dest.location(), len(src), true)
+	quicksummary := summarize(memory, src)
+
+	err := memory.transfer(src, dest, mode)
+	if err != nil {
+		t.Fatalf("Failure moving patches: %s", err)
+	}
+	for i := 0; i < len(src); i++ {
+		if mode == moveM {
+			_, err = memory.get(src[i])
+			if err != ErrUninitialized {
+				t.Fatalf("Move left original location %d:%d initialized", src[i].bank(), src[i].location())
+			}
+		}
+
+		moved, err := memory.get(dests[i])
+		if err == ErrUninitialized {
+			t.Fatalf("Transfer left destination location %d:%d uninitialized", dests[i].bank(), dests[i].location())
+		}
+		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
+		if msum != quicksummary[i] {
+			t.Fatalf("Did not correctly transfer patch: Expected destination to contain %q, got %q", quicksummary[i], msum)
+		}
+	}
+}
+
+func expectUnsuccessfulTransfer(t *testing.T, memory *PatchMemory, src []patchRef, dest patchRef, expectedError error, mode transferMode) {
+	quicksummary := summarize(memory, src)
+	err := memory.transfer(src, dest, mode)
+	if err != expectedError {
+		t.Errorf("Expected error %s, got: %s", expectedError, err)
+	}
+
+	// Validate that it put everything back
+	for i := 0; i < len(src); i++ {
+		moved, err := memory.get(src[i])
+		if err == ErrUninitialized {
+			t.Fatalf("Failed move left original %d:%d uninitialized", 0, i)
+		}
+		msum := fmt.Sprintf("%s:%f", moved.PrintableName(), moved.Version())
+		if msum != quicksummary[i] {
+			t.Errorf("Did not correctly restore patch after failed move: Expected %q, got %q", quicksummary[i], msum)
+		}
+
+		if mode == copyM {
+			// test that copy didn't leave clutter behind
+			dests := buildRefList(t, memory, dest.patchType, dest.bank(), dest.location(), len(src), true)
+			_, err = memory.get(dests[i])
+			if err != ErrUninitialized {
+				t.Fatalf("Failed copy left destination location %d:%d initialized when it should be blank", src[i].bank(), src[i].location())
+			}
+		}
+	}
 }
 
 func summarize(memory *PatchMemory, refs []patchRef) (summaries []string) {

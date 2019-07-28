@@ -30,7 +30,7 @@ func (pt PatchType) String() (typeStr string) {
 }
 
 type patchRef struct {
-	PatchType PatchType
+	patchType PatchType
 	source    SourceType
 	index     int
 }
@@ -44,7 +44,7 @@ func (ref *patchRef) location() int {
 }
 
 func (ref *patchRef) valid() bool {
-	return valid(ref.PatchType, ref.source, ref.index)
+	return valid(ref.patchType, ref.source, ref.index)
 }
 
 func (ref *patchRef) String() string {
@@ -52,7 +52,7 @@ func (ref *patchRef) String() string {
 	var typeStr string
 	var locationStr string
 
-	switch ref.PatchType {
+	switch ref.patchType {
 	case PerformanceT:
 		typeStr = "performance"
 	case ProgramT:
