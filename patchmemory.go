@@ -344,6 +344,32 @@ func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transfer
 	return err
 }
 
+// Panics if locations are invalid
+func (memory *PatchMemory) Swap(src patchRef, dest patchRef) error {
+	if src.PatchType != dest.PatchType {
+		return ErrXferTypeMismatch
+	}
+	if src.source != dest.source {
+		return ErrXferTypeMismatch // Don't support swapping to/from a slot, should be a copy or move.
+	}
+
+	switch src.PatchType {
+	case PerformanceT:
+		srcPtr := memory.perfPtr(src)
+		destPtr := memory.perfPtr(dest)
+		temp := *destPtr
+		*destPtr = *srcPtr
+		*srcPtr = temp
+	case ProgramT:
+		srcPtr := memory.progPtr(src)
+		destPtr := memory.progPtr(dest)
+		temp := *destPtr
+		*destPtr = *srcPtr
+		*srcPtr = temp
+	}
+	return nil
+}
+
 func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	var result []string
 	currBank := -1 // won't match any bank

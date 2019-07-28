@@ -3,27 +3,13 @@ package nordlead3
 /*
 TODO:
 
- - Get rid of the slotProgramT and slotPerformanceT types.
-     - Instead, add a location in the ref that's either a slot or memory
-     - The ref responds to source with either SlotT or MemoryT
-     - Either type responds to index()
-     - Because bank/location aren't shared by all types of ref
-     - Interface Reference{} requires source() SourceType, index() int, contents() PatchType
-     - Helper methods RefFromSlot(PatchType, index) and RefFromMemory(PatchType, bank, location) can be public.
-     - memory.Get(Reference) should return a *patch, but should not be exported (patches aren't useful to consumers)
-     - methods accepting indices should not be public, as many methods as possible, both internal and external, should use refs, if this reduces the number of methods needed
- - Find an interface abstraction that lets you do away with the custom behaviours for program/performance as much as possible
-     - memory.Get needs to be able to return one of these, perhaps "patch" or "patchable"?
-     - Should not be exported, it doesn't have a real use outside the library functions.
-     - Exported stuff should definitely be Program/Performance split
  - Be able to print and dump the slot content
  - Expand slot concept to nl3edit too (move, rename, delete)
  - Write a bunch of useful tests for the core methods
      - Test the move to/from slot methods
      - Test the delete methods
- - Re-implement move as a copy and a delete, creating copy method as well.
+     - Test Swap()
  - Create useful functions for manipulating memory:
-     - Swap locations (separate from copy/move)
      - Insert a location (move following locations down until an empty location is hit, or return an error if there's no room)
  - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
 */
