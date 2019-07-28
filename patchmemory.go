@@ -32,6 +32,30 @@ type PatchMemory struct {
 	slotPrograms    [4]*Program
 }
 
+func (memory *PatchMemory) CopyPerformanceToSlot(ml MemoryLocation) error {
+	src := []patchRef{patchRef{PerformanceT, MemoryT, ml.index()}}
+	dest := performanceSlotRef
+	return memory.transfer(src, dest, copyM)
+}
+
+func (memory *PatchMemory) CopyProgramToSlot(ml MemoryLocation, index int) error {
+	src := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
+	dest := patchRef{ProgramT, SlotT, index}
+	return memory.transfer(src, dest, copyM)
+}
+
+func (memory *PatchMemory) CopySlotToPerformance(ml MemoryLocation) error {
+	src := []patchRef{performanceSlotRef}
+	dest := patchRef{PerformanceT, MemoryT, ml.index()}
+	return memory.transfer(src, dest, copyM)
+}
+
+func (memory *PatchMemory) CopySlotToProgram(index int, ml MemoryLocation) error {
+	src := []patchRef{patchRef{ProgramT, SlotT, index}}
+	dest := patchRef{ProgramT, MemoryT, ml.index()}
+	return memory.transfer(src, dest, copyM)
+}
+
 func (memory *PatchMemory) ExportAllPerformances(filename string) error {
 	var refs []patchRef
 
@@ -138,6 +162,60 @@ func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid
 	return validFound, invalidFound, nil
 }
 
+func (memory *PatchMemory) GetPerformance(ml MemoryLocation) (*Performance, error) {
+	ref := patchRef{PerformanceT, MemoryT, ml.index()}
+	patch, err := memory.get(ref)
+	if err != nil {
+		return nil, err
+	}
+	return patch.(*Performance), nil
+}
+
+func (memory *PatchMemory) GetProgram(ml MemoryLocation) (*Program, error) {
+	ref := patchRef{ProgramT, MemoryT, ml.index()}
+	patch, err := memory.get(ref)
+	if err != nil {
+		return nil, err
+	}
+	return patch.(*Program), nil
+}
+
+func (memory *PatchMemory) GetSlotPerformance() (*Performance, error) {
+	ref := performanceSlotRef
+	patch, err := memory.get(ref)
+	if err != nil {
+		return nil, err
+	}
+	return patch.(*Performance), nil
+}
+
+func (memory *PatchMemory) GetSlotProgram(index int) (*Program, error) {
+	ref := patchRef{ProgramT, SlotT, index}
+	patch, err := memory.get(ref)
+	if err != nil {
+		return nil, err
+	}
+	return patch.(*Program), nil
+}
+
+func (memory *PatchMemory) MovePerformances(src []MemoryLocation, dest MemoryLocation) error {
+	var refs []patchRef
+	for _, ml := range src {
+		refs = append(refs, patchRef{PerformanceT, MemoryT, ml.index()})
+	}
+	destref := patchRef{PerformanceT, MemoryT, dest.index()}
+	return memory.transfer(refs, destref, moveM)
+}
+
+func (memory *PatchMemory) MovePrograms(mls []MemoryLocation, dest MemoryLocation) error {
+	var refs []patchRef
+	for _, ml := range mls {
+		refs = append(refs, patchRef{ProgramT, MemoryT, ml.index()})
+	}
+	destref := patchRef{ProgramT, MemoryT, dest.index()}
+	return memory.transfer(refs, destref, moveM)
+}
+
 func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	var result []string
 	currBank := -1 // won't match any bank
@@ -181,6 +259,18 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+func (memory *PatchMemory) SwapPerformances(a MemoryLocation, b MemoryLocation) error {
+	aref := patchRef{PerformanceT, MemoryT, a.index()}
+	bref := patchRef{PerformanceT, MemoryT, a.index()}
+	return memory.swap(aref, bref)
+}
+
+func (memory *PatchMemory) SwapPrograms(a MemoryLocation, b MemoryLocation) error {
+	aref := patchRef{ProgramT, MemoryT, a.index()}
+	bref := patchRef{ProgramT, MemoryT, a.index()}
+	return memory.swap(aref, bref)
 }
 
 // Core internal behaviours
