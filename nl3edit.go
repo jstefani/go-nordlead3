@@ -16,28 +16,6 @@ import (
 	"github.com/mitchellh/go-homedir"
 )
 
-func printSummaryInfo(*nordlead3.PatchMemory) {
-	fmt.Printf("Not yet implemented. :(")
-}
-
-func printPerformance(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
-	performance, err := memory.GetPerformance(ml)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	performance.PrintContents(depth)
-}
-
-func printProgram(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
-	program, err := memory.GetProgram(ml)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	program.PrintContents(depth)
-}
-
 func runCommands(memory *nordlead3.PatchMemory) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -93,6 +71,8 @@ func runCommands(memory *nordlead3.PatchMemory) {
 	}
 }
 
+// Command parsing helpers
+
 // Expectations are an array of expected types and whether or not that type is optional
 // All optional arguments must go at the end and are assigned in order, no heuristics here!
 // Note: A "toEnd" type is provided to capture the entire rest of the argument line as a single string
@@ -142,42 +122,10 @@ func getArgs(args []string, expectations []string) (result []interface{}, ok boo
 	return result, ok
 }
 
-func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, ml nordlead3.MemoryLocation, filename string) {
-	var err error
-
-	if len(filename) == 0 {
-		filename, err = promptValidFilename(scanner, false)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-
-	// Expand ~ character first
-	filename, err = homedir.Expand(filename)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	switch typ {
-	case "prog":
-		err = memory.ExportProgram(ml, filename)
-	case "perf":
-		err = memory.ExportPerformance(ml, filename)
-	}
-	if err != nil {
-		fmt.Printf("Error exporting %s: %s\n", typ, err)
-	} else {
-		fmt.Println("Done!")
-	}
-}
-
 func promptValidFilename(scanner *bufio.Scanner, expectExist bool) (filename string, err error) {
 outer:
 	for {
 		args := getPrompted("Enter filename (empty line to abort): ", scanner)
-		fmt.Printf("getPrompted returned %q (len %d)\n", args, len(args))
 
 		switch len(args) {
 		case 0:
@@ -231,6 +179,73 @@ func getPrompted(prompt string, scanner *bufio.Scanner) (args []string) {
 
 	// Parse it
 	return strings.Fields(input)
+}
+
+func ptype(typ string) (pt nordlead3.PatchType, ok bool) {
+	switch typ {
+	case "prog":
+		pt = nordlead3.ProgramT
+	case "perf":
+		pt = nordlead3.PerformanceT
+	default:
+		fmt.Printf("%q is not a valid type. Please use `perf` or `prog`.", typ)
+		return 0, false
+	}
+	return pt, true
+}
+
+func ml(bank, location int) nordlead3.MemoryLocation {
+	return nordlead3.MemoryLocation{bank, location}
+}
+
+// Command processing functions
+
+func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, typ string, ml nordlead3.MemoryLocation, filename string) {
+	var err error
+
+	if len(filename) == 0 {
+		filename, err = promptValidFilename(scanner, false)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	// Expand ~ character first
+	filename, err = homedir.Expand(filename)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = os.Stat(filename)
+	if !os.IsNotExist(err) {
+		if err != nil {
+			fmt.Printf("Error exporting %s: %s\n", typ, err)
+			return
+		}
+		fmt.Printf("Aborting: %q exists, not overwriting.\n", filename)
+		return
+	}
+
+	file, err := os.Create(filename)
+	fmt.Printf("Preparing %q\n", filename)
+	if err != nil {
+		fmt.Printf("Error exporting %s: %s\n", typ, err)
+		return
+	}
+
+	switch typ {
+	case "prog":
+		err = memory.ExportProgram(ml, file)
+	case "perf":
+		err = memory.ExportPerformance(ml, file)
+	}
+	if err != nil {
+		fmt.Printf("Error exporting %s: %s\n", typ, err)
+	} else {
+		fmt.Println("Done!")
+	}
 }
 
 func loadFiles(memory *nordlead3.PatchMemory, filenames []string) {
@@ -309,21 +324,22 @@ func rename(memory *nordlead3.PatchMemory, typ string, ml nordlead3.MemoryLocati
 	}
 }
 
-func ptype(typ string) (pt nordlead3.PatchType, ok bool) {
-	switch typ {
-	case "prog":
-		pt = nordlead3.ProgramT
-	case "perf":
-		pt = nordlead3.PerformanceT
-	default:
-		fmt.Printf("%q is not a valid type. Please use `perf` or `prog`.", typ)
-		return 0, false
+func printPerformance(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
+	performance, err := memory.GetPerformance(ml)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
-	return pt, true
+	performance.PrintContents(depth)
 }
 
-func ml(bank, location int) nordlead3.MemoryLocation {
-	return nordlead3.MemoryLocation{bank, location}
+func printProgram(memory *nordlead3.PatchMemory, ml nordlead3.MemoryLocation, depth int) {
+	program, err := memory.GetProgram(ml)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	program.PrintContents(depth)
 }
 
 func usage() {

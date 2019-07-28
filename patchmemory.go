@@ -66,50 +66,50 @@ func (memory *PatchMemory) DeleteProgram(ml MemoryLocation) {
 	memory.clear(ref)
 }
 
-func (memory *PatchMemory) ExportAllPerformances(filename string) error {
+func (memory *PatchMemory) ExportAllPerformances(writer io.Writer) error {
 	var refs []patchRef
 
 	for i, _ := range memory.performances {
 		refs = append(refs, patchRef{PerformanceT, MemoryT, i})
 	}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
-func (memory *PatchMemory) ExportAllPrograms(filename string) error {
+func (memory *PatchMemory) ExportAllPrograms(writer io.Writer) error {
 	var refs []patchRef
 
 	for i, _ := range memory.programs {
 		refs = append(refs, patchRef{ProgramT, MemoryT, i})
 	}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
-func (memory *PatchMemory) ExportPerformance(ml MemoryLocation, filename string) error {
+func (memory *PatchMemory) ExportPerformance(ml MemoryLocation, writer io.Writer) error {
 	refs := []patchRef{patchRef{PerformanceT, MemoryT, ml.index()}}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
-func (memory *PatchMemory) ExportPerformanceBank(bank int, filename string) error {
+func (memory *PatchMemory) ExportPerformanceBank(bank int, writer io.Writer) error {
 	var refs []patchRef
 
 	for i := 0; i < bankSize; i++ {
 		refs = append(refs, patchRef{PerformanceT, MemoryT, index(bank, i)})
 	}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
-func (memory *PatchMemory) ExportProgram(ml MemoryLocation, filename string) error {
+func (memory *PatchMemory) ExportProgram(ml MemoryLocation, writer io.Writer) error {
 	refs := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
-func (memory *PatchMemory) ExportProgramBank(bank int, filename string) error {
+func (memory *PatchMemory) ExportProgramBank(bank int, writer io.Writer) error {
 	var refs []patchRef
 
 	for i := 0; i < bankSize; i++ {
 		refs = append(refs, patchRef{ProgramT, MemoryT, index(bank, i)})
 	}
-	return memory.exportLocations(refs, filename)
+	return memory.exportLocations(refs, writer)
 }
 
 func (memory *PatchMemory) Import(rawSysex []byte) error {
@@ -348,11 +348,9 @@ func (memory *PatchMemory) export(ref patchRef) (*[]byte, error) {
 	return nil, errors.New("Requested location cannot be formatted as sysex.")
 }
 
-// Accepts an array of patchLocations and exports them to the same file
-func (memory *PatchMemory) exportLocations(refs []patchRef, filename string) error {
-	var (
-		exportdata []byte
-	)
+// Accepts an array of patchLocations and writes out fully formatted sysex blocks
+func (memory *PatchMemory) exportLocations(refs []patchRef, writer io.Writer) error {
+	var exportdata []byte
 
 	for _, ref := range refs {
 		fdata, err := memory.export(patchRef{PerformanceT, MemoryT, ref.index})
@@ -372,7 +370,8 @@ func (memory *PatchMemory) exportLocations(refs []patchRef, filename string) err
 	if len(exportdata) == 0 {
 		return ErrNoDataToWrite
 	}
-	return exportToFile(&exportdata, filename, false)
+	_, err := writer.Write(exportdata)
+	return err
 }
 
 // Returns a generic patch interface, could be either a program or a performance.

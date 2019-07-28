@@ -4,7 +4,6 @@ package nordlead3
 TODO:
 
  - Expand slot concept to nl3edit too (move, rename, delete)
- - Rewrite exporters to take an io.Writer instead of doing file ops directly
  - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
  - Add two sane init patches (an init and an initFM), both with the right sync bits set.
 */
@@ -14,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -55,27 +53,6 @@ var (
 	ErrNoDataToWrite    = errors.New("No data to write to file")
 	ErrNoPerfCategory   = errors.New("Performances do not support categories.")
 )
-
-func exportToFile(data *[]byte, filename string, overwrite bool) error {
-	_, err := os.Stat(filename)
-	if !os.IsNotExist(err) {
-		if err != nil {
-			return err
-		}
-		if !overwrite {
-			return os.ErrExist
-		}
-	}
-
-	file, err := os.Create(filename)
-	fmt.Printf("Preparing %q\n", filename)
-	if err != nil {
-		return err
-	}
-
-	_, err = file.Write(*data)
-	return err
-}
 
 func populateStructFromBitstream(i interface{}, data []byte) error {
 	// Use reflection to get each field in the struct and it's length, then read that into it
