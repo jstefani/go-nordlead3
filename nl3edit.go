@@ -51,13 +51,13 @@ func runCommands(memory *nordlead3.PatchMemory) {
 				fmt.Println(" m | move    <prog|perf>                                 : enter the move tool for programs or performances")
 			}
 		case "perf":
-			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
+			if bld, ok := getArgs(args[1:], []string{"int", "int", "int opt"}); ok {
 				printPerformance(memory, ml(bld[0].(int)-1, bld[1].(int)-1), bld[2].(int))
 			} else {
 				fmt.Printf(memory.SprintPerformances(true))
 			}
 		case "prog":
-			if bld, ok := getArgs(args, []string{"int", "int", "int opt"}); ok {
+			if bld, ok := getArgs(args[1:], []string{"int", "int", "int opt"}); ok {
 				printProgram(memory, ml(bld[0].(int)-1, bld[1].(int)-1), bld[2].(int))
 			} else {
 				fmt.Printf(memory.SprintPrograms(true))
@@ -66,7 +66,7 @@ func runCommands(memory *nordlead3.PatchMemory) {
 			fmt.Println("See ya!")
 			return
 		case "rename", "r":
-			if tbln, ok := getArgs(args, []string{"string", "int", "int", "toEnd"}); ok {
+			if tbln, ok := getArgs(args[1:], []string{"string", "int", "int", "toEnd"}); ok {
 				rename(memory, tbln[0].(string), ml(tbln[1].(int)-1, tbln[2].(int)-1), tbln[3].(string))
 			} else {
 				fmt.Println(" r | rename  <prog|perf> <bank> <location> <new name>    : rename the indicated program or performance")
