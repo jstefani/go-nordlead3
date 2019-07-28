@@ -6,7 +6,7 @@ import (
 
 func TestDumpPerformanceSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	inputSysex := ValidPerformanceSysex(t)
+	inputSysex := validPerformanceSysex(t)
 	inputSysexStruct, err := ParseSysex(inputSysex)
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
@@ -32,5 +32,5 @@ func TestDumpPerformanceSysex(t *testing.T) {
 	// Compare the decoded data for easier debugging
 	decodedPS := unpackSysex(performanceSysex)
 	decodedOS := unpackSysex(*outputSysex)
-	BinaryExpectEqual(t, &decodedPS, &decodedOS)
+	binaryExpectEqual(t, &decodedPS, &decodedOS)
 }

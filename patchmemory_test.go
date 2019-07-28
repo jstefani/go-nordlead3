@@ -7,7 +7,7 @@ import (
 
 func TestLoadValidPerformanceFromSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	sysex := ValidPerformanceSysex(t)
+	sysex := validPerformanceSysex(t)
 
 	err := memory.Import(sysex)
 	if err != nil {
@@ -32,7 +32,7 @@ func TestLoadValidPerformanceFromSysex(t *testing.T) {
 
 func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	sysex := InvalidPerformanceSysex(t)
+	sysex := invalidPerformanceSysex(t)
 
 	err := memory.Import(sysex)
 	if err == nil {
@@ -49,7 +49,7 @@ func TestLoadInvalidPerformanceFromSysex(t *testing.T) {
 
 func TestLoadProgramFromSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	sysex := ValidProgramSysex(t)
+	sysex := validProgramSysex(t)
 
 	err := memory.Import(sysex)
 	if err != nil {
@@ -74,7 +74,7 @@ func TestLoadProgramFromSysex(t *testing.T) {
 
 func TestDumpProgramToSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	inputSysex := ValidProgramSysex(t)
+	inputSysex := validProgramSysex(t)
 	err := memory.Import(inputSysex)
 	if err != nil {
 		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
@@ -85,7 +85,7 @@ func TestDumpProgramToSysex(t *testing.T) {
 		t.Errorf("Error dumping program: %q", err)
 	}
 
-	BinaryExpectEqual(t, &inputSysex, outputSysex)
+	binaryExpectEqual(t, &inputSysex, outputSysex)
 
 	// test negative case
 	outputSysex, err = memory.export(patchRef{ProgramT, MemoryT, index(validProgramBank+1, validProgramLocation+1)})
@@ -96,7 +96,7 @@ func TestDumpProgramToSysex(t *testing.T) {
 
 func TestDumpPerformanceToSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	inputSysex := ValidPerformanceSysex(t)
+	inputSysex := validPerformanceSysex(t)
 	err := memory.Import(inputSysex)
 	if err != nil {
 		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
@@ -107,7 +107,7 @@ func TestDumpPerformanceToSysex(t *testing.T) {
 		t.Errorf("Error dumping program: %q", err)
 	}
 
-	BinaryExpectEqual(t, &inputSysex, outputSysex)
+	binaryExpectEqual(t, &inputSysex, outputSysex)
 
 	// test negative case
 	uninitRef := patchRef{PerformanceT, MemoryT, index(validPerformanceBank, validPerformanceLocation+1)}

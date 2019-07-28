@@ -11,32 +11,32 @@ import (
 )
 
 const (
-	SYSEX_START = 0xF0
-	SYSEX_END   = 0xF7
+	sysexStart = 0xF0
+	sysexEnd   = 0xF7
 )
 
 const (
-	ProgramFromSlot       = 0x20
-	ProgramFromMemory     = 0x21
-	PerformanceFromSlot   = 0x28
-	PerformanceFromMemory = 0x29
+	programFromSlot       = 0x20
+	programFromMemory     = 0x21
+	performanceFromSlot   = 0x28
+	performanceFromMemory = 0x29
 )
 
 const (
-	CategoryOffset  = 22
-	VersionOffset   = 38
-	PatchDataOffset = 40
+	categoryOffset  = 22
+	versionOffset   = 38
+	patchdataOffset = 40
 )
 
 const (
-	SpareHeaderLength          = 15
-	PerformanceBitstreamLength = 859
-	ProgramBitstreamLength     = 191
+	spareHeaderLength          = 15
+	performanceBitstreamLength = 859
+	programBitstreamLength     = 191
 )
 
-var SysexHeader = []byte{0xF0, 0x33, 0x7F, 0x09}
+var sysexHeader = []byte{0xF0, 0x33, 0x7F, 0x09}
 
-type Sysex struct {
+type sysex struct {
 	rawSysex         []byte
 	decodedBitstream []byte
 }
@@ -49,84 +49,84 @@ type sysexable interface {
 	sysexVersion() []byte
 }
 
-func (sysex *Sysex) bank() int {
-	return int(sysex.rawSysex[4])
+func (s *sysex) bank() int {
+	return int(s.rawSysex[4])
 }
 
-func (sysex *Sysex) decodeBitstream() {
-	sysex.decodedBitstream = unpackSysex(sysex.rawBitstream())
+func (s *sysex) decodeBitstream() {
+	s.decodedBitstream = unpackSysex(s.rawBitstream())
 }
 
-func (sysex *Sysex) rawBitstream() []byte {
-	return sysex.rawSysex[PatchDataOffset:]
+func (s *sysex) rawBitstream() []byte {
+	return s.rawSysex[patchdataOffset:]
 }
 
-func (sysex *Sysex) location() int {
-	return int(sysex.rawSysex[5])
+func (s *sysex) location() int {
+	return int(s.rawSysex[5])
 }
 
-func (sysex *Sysex) checksum() uint8 {
-	return sysex.decodedBitstream[len(sysex.decodedBitstream)-1]
+func (s *sysex) checksum() uint8 {
+	return s.decodedBitstream[len(s.decodedBitstream)-1]
 }
 
-func (sysex *Sysex) messageType() uint8 {
-	return sysex.rawSysex[3]
+func (s *sysex) messageType() uint8 {
+	return s.rawSysex[3]
 }
 
-func (sysex *Sysex) category() uint8 {
-	return sysex.rawSysex[CategoryOffset]
+func (s *sysex) category() uint8 {
+	return s.rawSysex[categoryOffset]
 }
 
-func (sysex *Sysex) name() []byte {
-	return sysex.rawSysex[6:22]
+func (s *sysex) name() []byte {
+	return s.rawSysex[6:22]
 }
 
-func (sysex *Sysex) nameAsArray() [16]byte {
+func (s *sysex) nameAsArray() [16]byte {
 	var name [16]byte
-	for i, char := range sysex.name() {
+	for i, char := range s.name() {
 		name[i] = char
 	}
 	return name
 }
 
-func (sysex *Sysex) printableName() string {
-	return fmt.Sprintf("%-16s", strings.TrimRight(string(sysex.name()), "\x00"))
+func (s *sysex) printableName() string {
+	return fmt.Sprintf("%-16s", strings.TrimRight(string(s.name()), "\x00"))
 }
 
-func (sysex *Sysex) printableType() string {
-	switch sysex.messageType() {
-	case ProgramFromSlot, ProgramFromMemory:
+func (s *sysex) printableType() string {
+	switch s.messageType() {
+	case programFromSlot, programFromMemory:
 		return "Program"
-	case PerformanceFromSlot, PerformanceFromMemory:
+	case performanceFromSlot, performanceFromMemory:
 		return "Performance"
 	default:
 		return "Unknown"
 	}
 }
 
-func (sysex *Sysex) valid() (bool, error) {
+func (s *sysex) valid() (bool, error) {
 	var errStrs []string
 
 	// Verify message type and expected length
-	switch sysex.messageType() {
-	case ProgramFromSlot, ProgramFromMemory:
-		if len(sysex.decodedBitstream) != ProgramBitstreamLength {
-			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName()))
+	switch s.messageType() {
+	case programFromSlot, programFromMemory:
+		if len(s.decodedBitstream) != programBitstreamLength {
+			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", s.printableType(), s.bank(), s.location(), s.printableName()))
 		}
-	case PerformanceFromSlot, PerformanceFromMemory:
-		if len(sysex.decodedBitstream) != PerformanceBitstreamLength {
-			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName()))
+	case performanceFromSlot, performanceFromMemory:
+		if len(s.decodedBitstream) != performanceBitstreamLength {
+			errStrs = append(errStrs, fmt.Sprintf("Error parsing %s (%v:%03d %q): data invalid!", s.printableType(), s.bank(), s.location(), s.printableName()))
 		}
 	default:
-		errStrs = append(errStrs, fmt.Sprintf("Unknown type %x (%d)", sysex.messageType(), sysex.messageType()))
+		errStrs = append(errStrs, fmt.Sprintf("Unknown type %x (%d)", s.messageType(), s.messageType()))
 	}
 
 	// Compute and validate 8-bit checksum
-	checksum := sysex.decodedBitstream[len(sysex.decodedBitstream)-1]
-	payload := sysex.decodedBitstream[:len(sysex.decodedBitstream)-1]
+	checksum := s.decodedBitstream[len(s.decodedBitstream)-1]
+	payload := s.decodedBitstream[:len(s.decodedBitstream)-1]
 	calculatedChecksum := checksum8(payload)
 	if checksum != calculatedChecksum {
-		errStrs = append(errStrs, fmt.Sprintf("Checksum mismatch parsing %s (%v:%03d %q): expected %x, got %x", sysex.printableType(), sysex.bank(), sysex.location(), sysex.printableName(), checksum, calculatedChecksum))
+		errStrs = append(errStrs, fmt.Sprintf("Checksum mismatch parsing %s (%v:%03d %q): expected %x, got %x", s.printableType(), s.bank(), s.location(), s.printableName(), checksum, calculatedChecksum))
 	}
 
 	// Handle return values
@@ -137,13 +137,11 @@ func (sysex *Sysex) valid() (bool, error) {
 	}
 }
 
-func (sysex *Sysex) version() float64 {
-	return float64(uint16(sysex.rawSysex[VersionOffset])<<8+uint16(sysex.rawSysex[VersionOffset+1])) / 100.0
+func (s *sysex) version() float64 {
+	return float64(uint16(s.rawSysex[versionOffset])<<8+uint16(s.rawSysex[versionOffset+1])) / 100.0
 }
 
-func ParseSysex(rawSysex []byte) (*Sysex, error) {
-	var sysex Sysex
-
+func ParseSysex(rawSysex []byte) (*sysex, error) {
 	// Strip leading F0 and trailing F7, if present
 	if rawSysex[0] == 0xF0 {
 		rawSysex = rawSysex[1:]
@@ -152,12 +150,12 @@ func ParseSysex(rawSysex []byte) (*Sysex, error) {
 		rawSysex = rawSysex[:len(rawSysex)-1]
 	}
 
-	sysex = Sysex{rawSysex: rawSysex}
-	sysex.decodeBitstream()
+	s := sysex{rawSysex: rawSysex}
+	s.decodeBitstream()
 
-	_, err := sysex.valid()
+	_, err := s.valid()
 
-	return &sysex, err
+	return &s, err
 }
 
 // MIDI 8-bit to bitstream decoding
@@ -227,11 +225,11 @@ func packSysex(payload []byte) []byte {
 func toSysex(obj sysexable, ref patchRef) (*[]byte, error) {
 	buffer := bytes.NewBuffer(nil)
 
-	buffer.Write(SysexHeader)
+	buffer.Write(sysexHeader)
 	buffer.Write([]byte{obj.sysexType(), uint8(ref.bank()), uint8(ref.location())})
 	buffer.Write(obj.sysexName())
 	buffer.WriteByte(obj.sysexCategory())
-	buffer.Write((*new([SpareHeaderLength]byte))[:])
+	buffer.Write((*new([spareHeaderLength]byte))[:])
 	buffer.Write(obj.sysexVersion())
 
 	payload, err := obj.sysexData()

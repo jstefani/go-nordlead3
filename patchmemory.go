@@ -188,9 +188,9 @@ func (memory *PatchMemory) Import(rawSysex []byte) error {
 	}
 
 	switch sysex.messageType() {
-	case ProgramFromMemory, ProgramFromSlot:
+	case programFromMemory, programFromSlot:
 		memory.loadProgramFromSysex(sysex)
-	case PerformanceFromMemory, PerformanceFromSlot:
+	case performanceFromMemory, performanceFromSlot:
 		memory.loadPerformanceFromSysex(sysex)
 	}
 
@@ -204,7 +204,7 @@ func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid
 	// TODO: Refactor this as a scanner break function and scan the string elegantly
 	for {
 		// scan until we see an F0, we hit EOF, or an error occurs.
-		_, err := reader.ReadBytes(SYSEX_START)
+		_, err := reader.ReadBytes(sysexStart)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -219,7 +219,7 @@ func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid
 
 		// 0x33 = Clavia, 0x00 = dest. addr blanked above, 0x09 = NL3 sysex model ID
 		if string(header) == string([]byte{0x33, 0x00, 0x09}) {
-			sysex, err := reader.ReadBytes(SYSEX_END)
+			sysex, err := reader.ReadBytes(sysexEnd)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -235,49 +235,49 @@ func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid
 	return validFound, invalidFound, nil
 }
 
-func (memory *PatchMemory) loadPerformanceFromSysex(sysex *Sysex) error {
+func (memory *PatchMemory) loadPerformanceFromSysex(s *sysex) error {
 	var ref patchRef
 
-	performanceData, err := newPerformanceFromBitstream(sysex.decodedBitstream)
+	performanceData, err := newPerformanceFromBitstream(s.decodedBitstream)
 	if err == nil {
 		performance := Performance{
-			name:     sysex.nameAsArray(),
-			category: sysex.category(),
-			version:  sysex.version(),
+			name:     s.nameAsArray(),
+			category: s.category(),
+			version:  s.version(),
 			data:     performanceData,
 		}
 
-		if sysex.messageType() == PerformanceFromSlot {
+		if s.messageType() == performanceFromSlot {
 			ref = performanceSlotRef
 		} else {
-			ref = patchRef{PerformanceT, MemoryT, index(sysex.bank(), sysex.location())}
+			ref = patchRef{PerformanceT, MemoryT, index(s.bank(), s.location())}
 		}
 		if existing, err := memory.Get(ref); err == nil {
-			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), sysex.printableName())
+			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
 		}
 		err = memory.set(ref, &performance)
 	}
 	return err
 }
 
-func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) error {
+func (memory *PatchMemory) loadProgramFromSysex(s *sysex) error {
 	var ref patchRef
 
-	programData, err := newProgramFromBitstream(sysex.decodedBitstream)
+	programData, err := newProgramFromBitstream(s.decodedBitstream)
 	if err == nil {
 		program := Program{
-			name:     sysex.nameAsArray(),
-			category: sysex.category(),
-			version:  sysex.version(),
+			name:     s.nameAsArray(),
+			category: s.category(),
+			version:  s.version(),
 			data:     programData,
 		}
-		if sysex.messageType() == ProgramFromSlot {
-			ref = patchRef{ProgramT, SlotT, sysex.bank()}
+		if s.messageType() == programFromSlot {
+			ref = patchRef{ProgramT, SlotT, s.bank()}
 		} else {
-			ref = patchRef{ProgramT, MemoryT, index(sysex.bank(), sysex.location())}
+			ref = patchRef{ProgramT, MemoryT, index(s.bank(), s.location())}
 		}
 		if existing, err := memory.Get(ref); err == nil {
-			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), sysex.printableName())
+			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
 		}
 		err = memory.set(ref, &program)
 	}
@@ -285,12 +285,8 @@ func (memory *PatchMemory) loadProgramFromSysex(sysex *Sysex) error {
 }
 
 // Transfer can behave as a copy (mode is copyM) or a move (mode is moveM).
-// returns an error if any of the len(src) locations following dest are not empty, or if src contains
+// Returns an error if any of the len(src) locations following dest are not empty, or if src contains
 // patchLocations of different patchTypes
-// todo: could probably do this with a state concept in the patch memory too, but that's for later
-//       e.g. create a new patchmemory clone of the current one, start replacing, and if we hit a non-nil dest, abort
-//            if we don't, swap the new state for the old state as the current valid state of the memory.
-//            bonus is that we can store the old state as an undo point.
 func (memory *PatchMemory) Transfer(src []patchRef, dest patchRef, mode transferMode) error {
 	var err error
 	var moved []patchRef

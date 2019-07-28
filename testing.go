@@ -32,7 +32,7 @@ var validProgramRef = patchRef{ProgramT, MemoryT, index(validProgramBank, validP
 
 // If error is not nil, int holds location and error holds a regional comparison for debugging.
 // If error is nil, there was no difference.
-func LocationOfDifference(pb1, pb2 *[]byte) (int, error) {
+func locationOfDifference(pb1, pb2 *[]byte) (int, error) {
 	b1 := *pb1
 	b2 := *pb2
 	r1 := bytes.NewReader(b1)
@@ -47,9 +47,9 @@ func LocationOfDifference(pb1, pb2 *[]byte) (int, error) {
 				return 0, nil
 			}
 		} else {
-			minIndex := Max(0, i-5)
-			maxIndex1 := Min(i+5, len(b1))
-			maxIndex2 := Min(i+5, len(b2))
+			minIndex := max(0, i-5)
+			maxIndex1 := min(i+5, len(b1))
+			maxIndex2 := min(i+5, len(b2))
 			explanation := fmt.Sprintf("Bytes 1: %x^%x | Bytes 2: %x^%x", b1[minIndex:i], b1[i:maxIndex1], b2[minIndex:i], b2[i:maxIndex2])
 			return i, errors.New(explanation)
 		}
@@ -57,37 +57,37 @@ func LocationOfDifference(pb1, pb2 *[]byte) (int, error) {
 	}
 }
 
-func Min(x, y int) int {
+func min(x, y int) int {
 	if x < y {
 		return x
 	}
 	return y
 }
 
-func Max(x, y int) int {
+func max(x, y int) int {
 	if x > y {
 		return x
 	}
 	return y
 }
 
-func ValidPerformanceSysex(t *testing.T) []byte {
+func validPerformanceSysex(t *testing.T) []byte {
 	return helperLoadBytes(t, "Performance-Orchestra     HN.syx")
 }
-func ValidProgramSysex(t *testing.T) []byte {
+func validProgramSysex(t *testing.T) []byte {
 	return helperLoadBytes(t, "Program-BladeRun     ZON-1.18.syx")
 }
 
-func InvalidPerformanceSysex(t *testing.T) []byte {
+func invalidPerformanceSysex(t *testing.T) []byte {
 	return helperLoadBytes(t, "Performance-Invalid.syx")
 }
 
-func InvalidProgramSysex(t *testing.T) []byte {
+func invalidProgramSysex(t *testing.T) []byte {
 	return helperLoadBytes(t, "Program-Invalid.syx")
 }
 
-func BinaryExpectEqual(t *testing.T, expected *[]byte, received *[]byte) {
-	location, explanation := LocationOfDifference(expected, received)
+func binaryExpectEqual(t *testing.T, expected *[]byte, received *[]byte) {
+	location, explanation := locationOfDifference(expected, received)
 	if explanation != nil {
 		fmt.Printf("Expected: %x\n", expected)
 		fmt.Printf("Received: %x\n", received)
@@ -115,6 +115,6 @@ func helperLoadFromFile(t *testing.T, memory *PatchMemory, filename string) {
 }
 
 func tailBytes(buf []byte, n int) []byte {
-	start := Max(0, len(buf)-n)
+	start := max(0, len(buf)-n)
 	return buf[start:]
 }

@@ -104,7 +104,7 @@ func (program *Program) sysexName() []byte {
 }
 
 func (program *Program) sysexType() uint8 {
-	return ProgramFromMemory
+	return programFromMemory
 }
 
 func (program *Program) sysexVersion() []byte {

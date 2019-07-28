@@ -364,10 +364,10 @@ func maxFieldWidths(rt reflect.Type, rv reflect.Value) (nameWidth int, typeWidth
 
 		// Structs have long names and we don't align them so we ignore them.
 		if rf.Kind() != reflect.Struct {
-			mw = Max(mw, len(sf.Name))
+			mw = max(mw, len(sf.Name))
 			typeName := fmt.Sprintf("%s", sf.Type)
 			typeWidth := len(typeName)
-			tw = Max(tw, typeWidth)
+			tw = max(tw, typeWidth)
 		}
 	}
 

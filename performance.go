@@ -93,7 +93,7 @@ func (performance *Performance) sysexName() []byte {
 }
 
 func (performance *Performance) sysexType() uint8 {
-	return PerformanceFromMemory
+	return performanceFromMemory
 }
 
 func (performance *Performance) sysexVersion() []byte {

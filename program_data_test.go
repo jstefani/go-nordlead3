@@ -6,7 +6,7 @@ import (
 
 func TestDumpProgramSysex(t *testing.T) {
 	memory := new(PatchMemory)
-	inputSysex := ValidProgramSysex(t)
+	inputSysex := validProgramSysex(t)
 	inputSysexStruct, err := ParseSysex(inputSysex)
 	if err != nil {
 		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
@@ -28,15 +28,15 @@ func TestDumpProgramSysex(t *testing.T) {
 	// Compare the decoded data for easier debugging
 	decodedPS := unpackSysex(programSysex)
 	decodedOS := unpackSysex(*outputSysex)
-	location, explanation := LocationOfDifference(&decodedPS, &decodedOS)
+	location, explanation := locationOfDifference(&decodedPS, &decodedOS)
 	if explanation != nil {
 		t.Errorf("Dumped sysex does not match input at offset %d (%d): %q", location, location*8, explanation)
 	}
 }
 
 func TestPackAndUnpackSysex(t *testing.T) {
-	sysex, _ := ParseSysex(ValidProgramSysex(t))
-	bitsToRepack := sysex.decodedBitstream
+	s, _ := ParseSysex(validProgramSysex(t))
+	bitsToRepack := s.decodedBitstream
 	repackedBits := unpackSysex(packSysex(bitsToRepack))
 
 	if string(bitsToRepack) != string(repackedBits) {
