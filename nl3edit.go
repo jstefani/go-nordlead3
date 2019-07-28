@@ -32,6 +32,8 @@ func runCommands(memory *nordlead3.PatchMemory) {
 
 		// Evaluate
 		switch command {
+		case "delete", "d", "clear", "c":
+			clear(memory, scanner, args[1:])
 		case "export", "e":
 			export(memory, scanner, args[1:])
 		case "help", "h":
@@ -210,6 +212,65 @@ func ml(bank, location int) nordlead3.MemoryLocation {
 }
 
 // Command processing functions
+
+func clear(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, args []string) {
+	if tblf, ok := getArgs(args, []string{"string", "int", "int", "string opt"}); ok {
+		typ, ok := ptype(tblf[0].(string))
+		ml := ml(tblf[1].(int)-1, tblf[2].(int)-1)
+		force := tblf[3].(string) == "f"
+
+		if !ok {
+			return
+		}
+
+		var locStr string
+		switch typ {
+		case nordlead3.PerformanceT:
+			loc, err := memory.GetPerformance(ml)
+			if err != nil {
+				fmt.Println("That location is either invalid or already clear.")
+				return
+			}
+			locStr = loc.Summary()
+		case nordlead3.ProgramT:
+			loc, err := memory.GetProgram(ml)
+			if err != nil {
+				fmt.Println("That location is either invalid or already clear.")
+				return
+			}
+			locStr = loc.Summary()
+		}
+
+		if !force {
+			prompt := fmt.Sprintf("Deleting %s %d:%d : %q. Are you sure (y/N)? ", typ.String(), ml.Bank+1, ml.Location+1, locStr)
+
+		outer:
+			for {
+				args := getPrompted(prompt, scanner)
+				if len(args) == 0 {
+					break
+				}
+				switch args[0] {
+				case "y", "Y", "yes", "Yes", "YES":
+					switch typ {
+					case nordlead3.PerformanceT:
+						memory.DeletePerformance(ml)
+					case nordlead3.ProgramT:
+						memory.DeleteProgram(ml)
+					}
+					fmt.Println("Baleeted!")
+					return
+				case "n", "N", "no", "No", "NO":
+					break outer
+				default:
+					continue
+				}
+			}
+		}
+		fmt.Println("Ok, nevermind then!")
+		return
+	}
+}
 
 func export(memory *nordlead3.PatchMemory, scanner *bufio.Scanner, args []string) {
 	var err error
