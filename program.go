@@ -12,6 +12,19 @@ type Program struct {
 	data     *ProgramData
 }
 
+func (program *Program) Category() int {
+	return int(program.category)
+}
+
+func (program *Program) PrintableContents() string {
+	if program == nil {
+		return strUninitializedName
+	}
+	var writer strings.Builder
+	fprintStruct(&writer, program.data, 3)
+	return writer.String()
+}
+
 // Implement patch
 
 func (program *Program) PatchType() PatchType {
@@ -31,6 +44,9 @@ func (program *Program) PrintableCategory() string {
 	if program == nil {
 		return ""
 	}
+	if program.category >= uint8(len(Categories)) {
+		return fmt.Sprintf("Unknown: %02x", program.category)
+	}
 	return Categories[program.category]
 }
 
@@ -41,14 +57,14 @@ func (program *Program) PrintableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(program.name[:]), "\x00"))
 }
 
-func (program *Program) SetCategory(newCategory uint8) error {
+func (program *Program) SetCategory(newCategory int) error {
 	if program == nil {
 		return ErrUninitialized // can't set a category on an uninitialized program
 	}
-	if newCategory > 0x0D {
+	if newCategory >= len(Categories) {
 		return ErrInvalidCategory
 	}
-	program.category = newCategory
+	program.category = uint8(newCategory)
 	return nil
 }
 

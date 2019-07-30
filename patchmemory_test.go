@@ -130,7 +130,7 @@ func TestMovePrograms(t *testing.T) {
 
 	// Test unsuccessful moving to end of range, expect overflow error
 	src = buildRefList(t, memory, ProgramT, 1, startLoc, numToMove, false)
-	oneOverMax := (numProgBanks+1)*bankSize - numToMove + 1
+	oneOverMax := (NumProgramBanks+1)*BankSize - numToMove + 1
 	dest = patchRef{ProgramT, MemoryT, oneOverMax}
 	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOverflow, moveM)
 
@@ -153,7 +153,7 @@ func TestMovePerformances(t *testing.T) {
 
 	// Test unsuccessful moving to end of range, expect overflow error
 	src = buildRefList(t, memory, PerformanceT, destBank, startLoc, numToMove, false)
-	oneOverMax := (numPerfBanks+1)*bankSize - numToMove + 1
+	oneOverMax := (NumPerformanceBanks+1)*BankSize - numToMove + 1
 	dest = patchRef{PerformanceT, MemoryT, oneOverMax}
 	expectUnsuccessfulTransfer(t, memory, src, dest, ErrMemoryOverflow, moveM)
 
@@ -188,13 +188,13 @@ func TestSwapPerformances(t *testing.T) {
 	expectUnsuccessfulSwap(t, memory, a, b, ErrXferTypeMismatch)
 
 	// E. Test error handling when a swap is requested from an invalid location
-	a = patchRef{PerformanceT, MemoryT, index(numPerfBanks, 42)}
+	a = patchRef{PerformanceT, MemoryT, index(NumPerformanceBanks, 42)}
 	b = patchRef{PerformanceT, MemoryT, index(1, 42)}
 	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
 
 	// F. Test error handling whan a swap is requested to an invalid location
 	a = patchRef{PerformanceT, MemoryT, index(1, 42)}
-	b = patchRef{PerformanceT, MemoryT, index(numPerfBanks, 42)}
+	b = patchRef{PerformanceT, MemoryT, index(NumPerformanceBanks, 42)}
 	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
 }
 
@@ -219,13 +219,13 @@ func TestSwapPrograms(t *testing.T) {
 	expectSuccessfulSwap(t, memory, a, b)
 
 	// E. Test error handling when a swap is requested from an invalid location
-	a = patchRef{ProgramT, MemoryT, index(numProgBanks, 42)}
+	a = patchRef{ProgramT, MemoryT, index(NumProgramBanks, 42)}
 	b = patchRef{ProgramT, MemoryT, index(1, 42)}
 	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
 
 	// F. Test error handling whan a swap is requested to an invalid location
 	a = patchRef{ProgramT, MemoryT, index(1, 42)}
-	b = patchRef{ProgramT, MemoryT, index(numProgBanks, 42)}
+	b = patchRef{ProgramT, MemoryT, index(NumProgramBanks, 42)}
 	expectUnsuccessfulSwap(t, memory, a, b, ErrInvalidLocation)
 }
 

@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	bankSize     = 128
-	numPerfBanks = 2
-	numProgBanks = 8
+	BankSize            = 128
+	NumPerformanceBanks = 2
+	NumProgramBanks     = 8
 )
 
 // transferModes
@@ -26,8 +26,8 @@ var performanceSlotRef = patchRef{PerformanceT, SlotT, 0}
 type transferMode bool
 
 type PatchMemory struct {
-	performances    [numPerfBanks * bankSize]*Performance
-	programs        [numProgBanks * bankSize]*Program
+	performances    [NumPerformanceBanks * BankSize]*Performance
+	programs        [NumProgramBanks * BankSize]*Program
 	slotPerformance *Performance
 	slotPrograms    [4]*Program
 }
@@ -92,7 +92,7 @@ func (memory *PatchMemory) ExportPerformance(ml MemoryLocation, writer io.Writer
 func (memory *PatchMemory) ExportPerformanceBank(bank int, writer io.Writer) error {
 	var refs []patchRef
 
-	for i := 0; i < bankSize; i++ {
+	for i := 0; i < BankSize; i++ {
 		refs = append(refs, patchRef{PerformanceT, MemoryT, index(bank, i)})
 	}
 	return memory.exportLocations(refs, writer)
@@ -106,7 +106,7 @@ func (memory *PatchMemory) ExportProgram(ml MemoryLocation, writer io.Writer) er
 func (memory *PatchMemory) ExportProgramBank(bank int, writer io.Writer) error {
 	var refs []patchRef
 
-	for i := 0; i < bankSize; i++ {
+	for i := 0; i < BankSize; i++ {
 		refs = append(refs, patchRef{ProgramT, MemoryT, index(bank, i)})
 	}
 	return memory.exportLocations(refs, writer)
@@ -226,6 +226,34 @@ func (memory *PatchMemory) MovePrograms(mls []MemoryLocation, dest MemoryLocatio
 	return memory.transfer(refs, destref, moveM)
 }
 
+func (memory *PatchMemory) NumPerformances(onlyInitialized bool) int {
+	result := NumPerformanceBanks * BankSize
+
+	if onlyInitialized {
+		for _, prog := range memory.performances {
+			if prog == nil {
+				result--
+			}
+		}
+	}
+
+	return result
+}
+
+func (memory *PatchMemory) NumPrograms(onlyInitialized bool) int {
+	result := NumProgramBanks * BankSize
+
+	if onlyInitialized {
+		for _, prog := range memory.programs {
+			if prog == nil {
+				result--
+			}
+		}
+	}
+
+	return result
+}
+
 func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 	var result []string
 	currBank := -1 // won't match any bank
@@ -240,7 +268,7 @@ func (memory *PatchMemory) SprintPrograms(omitBlank bool) string {
 		bank, location := bankloc(i)
 
 		if bank != currBank {
-			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d programs) ***", bank+1, memory.numInitialized(ProgramT, bank), bankSize)
+			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d programs) ***", bank+1, memory.numInitialized(ProgramT, bank), BankSize)
 			result = append(result, bank_header)
 			currBank = bank
 		}
@@ -264,7 +292,7 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 		bank, location := bankloc(i)
 
 		if bank != currBank {
-			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d performances) ***", bank+1, memory.numInitialized(PerformanceT, bank), bankSize)
+			bank_header := fmt.Sprintf("\n*** Bank %v (%d/%d performances) ***", bank+1, memory.numInitialized(PerformanceT, bank), BankSize)
 			result = append(result, bank_header)
 			currBank = bank
 		}
@@ -574,9 +602,9 @@ func (memory *PatchMemory) initialized(ref patchRef) (result bool) {
 
 func (memory *PatchMemory) numInitialized(pt PatchType, bank int) int {
 	var result int
-	offset := bank * bankSize
+	offset := bank * BankSize
 
-	for i := 0; i < bankSize; i++ {
+	for i := 0; i < BankSize; i++ {
 		if memory.initialized(patchRef{pt, MemoryT, offset + i}) {
 			result++
 		}

@@ -1,7 +1,7 @@
 package nordlead3
 
 type patch interface {
-	SetCategory(uint8) error
+	SetCategory(int) error
 	SetName(string) error
 	PrintContents(int)
 	PrintableCategory() string

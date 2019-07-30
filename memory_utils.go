@@ -1,27 +1,27 @@
 package nordlead3
 
 func bank(index int) int {
-	return index / bankSize
+	return index / BankSize
 }
 
 // func bankv(pt PatchType, index int) (int, bool) {
-// 	return index / bankSize, valid(pt, index)
+// 	return index / BankSize, valid(pt, index)
 // }
 
 func location(index int) int {
-	return index % bankSize
+	return index % BankSize
 }
 
 // func locationv(pt PatchType, index int) (int, bool) {
-// 	return index % bankSize, valid(pt, index)
+// 	return index % BankSize, valid(pt, index)
 // }
 
 func index(bank, location int) int {
-	return bank*bankSize + location
+	return bank*BankSize + location
 }
 
 // func indexv(pt PatchType, bank, location int) (int, bool) {
-// 	index := bank*bankSize + location
+// 	index := bank*BankSize + location
 // 	return index, valid(pt, index)
 // }
 
@@ -44,11 +44,11 @@ func valid(pt PatchType, st SourceType, index int) (result bool) {
 	case MemoryT:
 		switch pt {
 		case PerformanceT:
-			numBanks = numPerfBanks
+			numBanks = NumPerformanceBanks
 		case ProgramT:
-			numBanks = numProgBanks
+			numBanks = NumProgramBanks
 		}
-		result = index >= 0 && index < numBanks*bankSize
+		result = index >= 0 && index < numBanks*BankSize
 	}
 	return
 }

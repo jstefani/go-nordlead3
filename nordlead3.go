@@ -24,8 +24,8 @@ const (
 	strUninitializedName = "** Uninitialized"
 )
 
-// Position is also the sysex category value as a uint16 (0x00 to 0x0D)
-var Categories = [14]string{
+// Position is also the sysex category value as a uint16 (0x00 to 0x0E observed)
+var Categories = [15]string{
 	"Acoustic", // 0x00
 	"Arpeggio", // 0x01
 	"Bass",     // ...
@@ -39,7 +39,8 @@ var Categories = [14]string{
 	"Piano",
 	"Synth",
 	"User1",
-	"User2", // 0x0D
+	"User2",
+	"User3",
 }
 
 var (
@@ -279,51 +280,57 @@ func checksum8(payload []byte) byte {
 }
 
 func printStruct(s interface{}, depth int) {
+	var writer strings.Builder
+	fprintStruct(&writer, s, depth)
+	fmt.Print(writer.String())
+}
+
+func fprintStruct(writer io.Writer, s interface{}, depth int) {
 	rv := reflect.ValueOf(s).Elem()
 	rt := rv.Type()
 
-	printReflectedStruct(rt, rv, 0, depth)
+	fprintReflectedStruct(writer, rt, rv, 0, depth)
 }
 
-func printReflectedStruct(rt reflect.Type, rv reflect.Value, indent int, depth int) {
+func fprintReflectedStruct(writer io.Writer, rt reflect.Type, rv reflect.Value, indent int, depth int) {
 	nameWidth, typeWidth := maxFieldWidths(rt, rv)
 
 	for i := 0; i < rv.NumField(); i++ {
 		sf := rt.Field(i)
 		rf := rv.Field(i)
 
-		printReflectedField(sf, rf, indent, depth, nameWidth, typeWidth)
+		fprintReflectedField(writer, sf, rf, indent, depth, nameWidth, typeWidth)
 	}
 }
 
-func printReflectedField(sf reflect.StructField, rf reflect.Value, indent int, depth int, nameWidth int, typeWidth int) {
+func fprintReflectedField(writer io.Writer, sf reflect.StructField, rf reflect.Value, indent int, depth int, nameWidth int, typeWidth int) {
 	strIndent := strings.Repeat(" ", indent*2)
 
-	fmt.Printf("  %s%-*s (%*s): ", strIndent, nameWidth, sf.Name, typeWidth, sf.Type)
+	fmt.Fprintf(writer, "  %s%-*s (%*s): ", strIndent, nameWidth, sf.Name, typeWidth, sf.Type)
 
 	switch rf.Kind() {
 	case reflect.Int:
-		fmt.Printf("%#02x / %d", rf.Int(), rf.Int())
+		fmt.Fprintf(writer, "%#02x / %d", rf.Int(), rf.Int())
 	case reflect.Uint:
-		fmt.Printf("%#02x / %d", rf.Uint(), rf.Uint())
+		fmt.Fprintf(writer, "%#02x / %d", rf.Uint(), rf.Uint())
 	case reflect.Bool:
-		fmt.Printf("%t", rf.Bool())
+		fmt.Fprintf(writer, "%t", rf.Bool())
 	case reflect.Array:
-		printArrayToString(rf)
+		fprintArrayToString(writer, rf)
 	case reflect.Struct:
-		fmt.Print(" {")
+		fmt.Fprint(writer, " {")
 		newStruct := reflect.New(sf.Type)
 		if depth == 0 {
-			fmt.Print(" <hidden: beyond depth> }")
+			fmt.Fprint(writer, " <hidden: beyond depth> }")
 		} else {
-			fmt.Println("")
-			printReflectedStruct(newStruct.Elem().Type(), rf, indent+1, depth-1)
-			fmt.Printf("  %s}", strIndent)
+			fmt.Fprintln(writer, "")
+			fprintReflectedStruct(writer, newStruct.Elem().Type(), rf, indent+1, depth-1)
+			fmt.Fprintf(writer, "  %s}", strIndent)
 		}
 	default:
-		fmt.Sprintf("** Unhandled type discovered: %v", rf.Kind())
+		fmt.Fprintf(writer, "** Unhandled type discovered: %v", rf.Kind())
 	}
-	fmt.Print("\n")
+	fmt.Fprint(writer, "\n")
 }
 
 func maxFieldWidths(rt reflect.Type, rv reflect.Value) (nameWidth int, typeWidth int) {
@@ -346,8 +353,8 @@ func maxFieldWidths(rt reflect.Type, rv reflect.Value) (nameWidth int, typeWidth
 	return mw, tw
 }
 
-func printArrayToString(rv reflect.Value) {
-	fmt.Print("[")
+func fprintArrayToString(writer io.Writer, rv reflect.Value) {
+	fmt.Fprint(writer, "[")
 	size := rv.Len()
 	strData := make([]string, 0)
 	charData := make([]string, 0)
@@ -357,6 +364,6 @@ func printArrayToString(rv reflect.Value) {
 		strData = append(strData, fmt.Sprintf("%02x", rvi.Uint()))
 		charData = append(charData, fmt.Sprintf("%q", rvi.Uint()))
 	}
-	fmt.Printf("%s] : [", strings.Join(strData, " "))
-	fmt.Printf("%s]\n", strings.Join(charData, " "))
+	fmt.Fprintf(writer, "%s] : [", strings.Join(strData, " "))
+	fmt.Fprintf(writer, "%s]\n", strings.Join(charData, " "))
 }

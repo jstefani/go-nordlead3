@@ -41,7 +41,7 @@ func (performance *Performance) PrintableName() string {
 
 // Performances don't support categories so this always returns ErrNoPerfCategory.
 // Included to satisfy Patch interface.
-func (performance *Performance) SetCategory(uint8) error {
+func (performance *Performance) SetCategory(int) error {
 	return ErrNoPerfCategory // performances don't support categories
 }
 
