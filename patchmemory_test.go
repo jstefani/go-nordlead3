@@ -8,11 +8,7 @@ import (
 func TestImportPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := validPerformanceSysex(t)
-
-	err := memory.Import(sysex)
-	if err != nil {
-		t.Errorf("Expected clean load from valid sysex. Got: %q", err)
-	}
+	helperLoadFromSysex(t, memory, sysex)
 
 	performance, err := memory.get(validPerformanceRef)
 
@@ -33,14 +29,9 @@ func TestImportPerformance(t *testing.T) {
 func TestImportInvalidPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := invalidPerformanceSysex(t)
+	helperLoadFromSysex(t, memory, sysex)
 
-	err := memory.Import(sysex)
-	if err == nil {
-		t.Errorf("Expected error from invalid sysex")
-		return
-	}
-
-	_, err = memory.get(invalidPerformanceRef)
+	_, err := memory.get(invalidPerformanceRef)
 
 	if err == nil {
 		t.Errorf("Loaded invalid performance into memory!")
@@ -50,11 +41,7 @@ func TestImportInvalidPerformance(t *testing.T) {
 func TestImportProgram(t *testing.T) {
 	memory := new(PatchMemory)
 	sysex := validProgramSysex(t)
-
-	err := memory.Import(sysex)
-	if err != nil {
-		t.Errorf("Expected clean load from valid sysex. Got: %q", err)
-	}
+	helperLoadFromSysex(t, memory, sysex)
 
 	patch, err := memory.get(validProgramRef)
 
@@ -75,10 +62,7 @@ func TestImportProgram(t *testing.T) {
 func TestExportPerformance(t *testing.T) {
 	memory := new(PatchMemory)
 	inputSysex := validPerformanceSysex(t)
-	err := memory.Import(inputSysex)
-	if err != nil {
-		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
-	}
+	helperLoadFromSysex(t, memory, inputSysex)
 
 	outputSysex, err := memory.export(validPerformanceRef)
 	if err != nil {
@@ -98,10 +82,7 @@ func TestExportPerformance(t *testing.T) {
 func TestExportProgram(t *testing.T) {
 	memory := new(PatchMemory)
 	inputSysex := validProgramSysex(t)
-	err := memory.Import(inputSysex)
-	if err != nil {
-		t.Fatalf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
-	}
+	helperLoadFromSysex(t, memory, inputSysex)
 
 	outputSysex, err := memory.export(validProgramRef)
 	if err != nil {
@@ -372,12 +353,6 @@ func buildRefList(t *testing.T, memory *PatchMemory, pt PatchType, startBank, st
 		t.Fatalf("Test range %s %d:%d-%d:%d does not contain a sufficient quantity of initialized patches.", pt.String(), startBank, startLocation, bank(index(startBank, startLocation)+numToMove), location(index(startBank, startLocation)+numToMove))
 	}
 	return
-}
-
-func populatedMemory(t *testing.T, filename string) *PatchMemory {
-	memory := new(PatchMemory)
-	helperLoadFromFile(t, memory, filename)
-	return memory
 }
 
 func expectSuccessfulCopy(t *testing.T, memory *PatchMemory, src, dest patchRef, err error) {

@@ -47,6 +47,10 @@ func (ref *patchRef) valid() bool {
 	return valid(ref.patchType, ref.source, ref.index)
 }
 
+func (ref *patchRef) increment() patchRef {
+	return patchRef{ref.patchType, ref.source, ref.index + 1}
+}
+
 func (ref *patchRef) String() string {
 	var sourceStr string
 	var typeStr string

@@ -91,6 +91,22 @@ func (s *sysex) nameAsArray() [16]byte {
 	return name
 }
 
+func (s *sysex) patchType() PatchType {
+	var result PatchType
+
+	switch s.messageType() {
+	case performanceFromSlot, performanceFromMemory:
+		result = PerformanceT
+	case programFromMemory, programFromSlot:
+		result = ProgramT
+	}
+	return result
+}
+
+func (s *sysex) toPatchRef() patchRef {
+	return patchRef{s.patchType(), s.sourceType(), index(s.bank(), s.location())}
+}
+
 func (s *sysex) printableName() string {
 	return fmt.Sprintf("%-16s", strings.TrimRight(string(s.name()), "\x00"))
 }
@@ -104,6 +120,18 @@ func (s *sysex) printableType() string {
 	default:
 		return "Unknown"
 	}
+}
+
+func (s *sysex) sourceType() SourceType {
+	var result SourceType
+
+	switch s.messageType() {
+	case performanceFromSlot, programFromSlot:
+		result = SlotT
+	case programFromMemory, performanceFromMemory:
+		result = MemoryT
+	}
+	return result
 }
 
 func (s *sysex) valid() (bool, error) {

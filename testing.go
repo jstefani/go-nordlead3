@@ -111,7 +111,21 @@ func helperLoadFromFile(t *testing.T, memory *PatchMemory, filename string) {
 	if err != nil {
 		t.Fatal(fmt.Printf("Could not open %q: %q\n", filename, err))
 	}
-	memory.ImportFrom(file)
+	memory.Import(file, true)
+}
+
+func helperLoadFromSysex(t *testing.T, memory *PatchMemory, sysex []byte) {
+	r := bytes.NewReader(sysex)
+	_, _, err := memory.Import(r, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func populatedMemory(t *testing.T, filename string) *PatchMemory {
+	memory := new(PatchMemory)
+	helperLoadFromFile(t, memory, filename)
+	return memory
 }
 
 func tailBytes(buf []byte, n int) []byte {

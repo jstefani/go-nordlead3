@@ -120,29 +120,9 @@ func (memory *PatchMemory) ExportProgramSlot(slot int, writer io.Writer) error {
 	return memory.exportLocations([]patchRef{patchRef{ProgramT, SlotT, slot}}, writer)
 }
 
-func (memory *PatchMemory) Import(rawSysex []byte) error {
-	err := *new(error)
-	sysex, err := parseSysex(rawSysex)
-	if err != nil {
-		return err
-	}
-
-	_, err = sysex.valid()
-	if err != nil {
-		return err
-	}
-
-	switch sysex.messageType() {
-	case programFromMemory, programFromSlot:
-		memory.importProgram(sysex)
-	case performanceFromMemory, performanceFromSlot:
-		memory.importPerformance(sysex)
-	}
-
-	return nil
-}
-
-func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid int, err error) {
+// Straight import: try to load into patch memory the way the file was dumped out, preserving
+// locations from the sysex.
+func (memory *PatchMemory) Import(input io.Reader, overwrite bool) (numValid int, numInvalid int, err error) {
 	validFound, invalidFound := 0, 0
 	scanner := bufio.NewScanner(input)
 	scanner.Split(splitSysex(vendorNord, modelNL3))
@@ -151,10 +131,46 @@ func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid
 		if !ok {
 			return validFound, invalidFound, scanner.Err()
 		}
-		sysex := scanner.Bytes()
-		err = memory.Import(sysex)
+		sysex, err := parseSysex(scanner.Bytes())
+		if err != nil {
+			invalidFound++
+			continue
+		}
+
+		err = memory.importTo(sysex, sysex.toPatchRef(), overwrite)
 		if err == nil {
 			validFound++
+		} else {
+			invalidFound++
+		}
+	}
+	return validFound, invalidFound, nil
+}
+
+// Custom import: loads the patches of the designated type only, starting at the memory location given.
+// Subsequent patches found in the same datastream will populate subsequent data locations.
+// Data in memory can be lost if overwrite is set to true and there are loaded patches in the locations populated by the import.
+func (memory *PatchMemory) ImportTo(input io.Reader, pt PatchType, ml MemoryLocation, overwrite bool) (numImported, numRejected int, err error) {
+	validFound, invalidFound := 0, 0
+	dest := patchRef{pt, MemoryT, ml.index()}
+
+	scanner := bufio.NewScanner(input)
+	scanner.Split(splitSysex(vendorNord, modelNL3))
+
+	for ok := scanner.Scan(); ; ok = scanner.Scan() {
+		if !ok {
+			return validFound, invalidFound, scanner.Err()
+		}
+		sysex, err := parseSysex(scanner.Bytes())
+		if err != nil {
+			invalidFound++
+			continue
+		}
+
+		err = memory.importTo(sysex, dest, overwrite)
+		if err == nil {
+			validFound++
+			dest = dest.increment()
 		} else {
 			invalidFound++
 		}
@@ -409,6 +425,21 @@ func (memory *PatchMemory) get(ref patchRef) (patch, error) {
 	return result, nil
 }
 
+func (memory *PatchMemory) importTo(s *sysex, ref patchRef, overwrite bool) error {
+	if ref.patchType != s.patchType() {
+		return ErrImportTypeMismatch
+	}
+
+	switch s.patchType() {
+	case ProgramT:
+		return memory.importProgram(s, ref, overwrite)
+	case PerformanceT:
+		return memory.importPerformance(s, ref, overwrite)
+	}
+
+	return nil
+}
+
 // Force sets the location in ref to the patch pointer, cast appropriately.
 // Does not care if the location is already occupied (current contents will be lost if not previously copied to another location)
 // Returns an error if the patch and ref are not the same type.
@@ -516,9 +547,7 @@ func (memory *PatchMemory) transfer(src []patchRef, dest patchRef, mode transfer
 
 // helpers
 
-func (memory *PatchMemory) importPerformance(s *sysex) error {
-	var ref patchRef
-
+func (memory *PatchMemory) importPerformance(s *sysex, dest patchRef, overwrite bool) error {
 	performanceData, err := newPerformanceFromBitstream(s.decodedBitstream)
 	if err == nil {
 		performance := Performance{
@@ -528,22 +557,19 @@ func (memory *PatchMemory) importPerformance(s *sysex) error {
 			data:     performanceData,
 		}
 
-		if s.messageType() == performanceFromSlot {
-			ref = performanceSlotRef
-		} else {
-			ref = patchRef{PerformanceT, MemoryT, index(s.bank(), s.location())}
+		if existing, err := memory.get(dest); err == nil {
+			if overwrite {
+				fmt.Printf("Overwriting %s (%q) with %q\n", dest.String(), existing.PrintableName(), s.printableName())
+			} else {
+				return ErrMemoryOccupied
+			}
 		}
-		if existing, err := memory.get(ref); err == nil {
-			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
-		}
-		err = memory.set(ref, &performance)
+		err = memory.set(dest, &performance)
 	}
 	return err
 }
 
-func (memory *PatchMemory) importProgram(s *sysex) error {
-	var ref patchRef
-
+func (memory *PatchMemory) importProgram(s *sysex, dest patchRef, overwrite bool) error {
 	programData, err := newProgramFromBitstream(s.decodedBitstream)
 	if err == nil {
 		program := Program{
@@ -552,15 +578,14 @@ func (memory *PatchMemory) importProgram(s *sysex) error {
 			version:  s.version(),
 			data:     programData,
 		}
-		if s.messageType() == programFromSlot {
-			ref = patchRef{ProgramT, SlotT, s.bank()}
-		} else {
-			ref = patchRef{ProgramT, MemoryT, index(s.bank(), s.location())}
+		if existing, err := memory.get(dest); err == nil {
+			if overwrite {
+				fmt.Printf("Overwriting %s (%q) with %q\n", dest.String(), existing.PrintableName(), s.printableName())
+			} else {
+				return ErrMemoryOccupied
+			}
 		}
-		if existing, err := memory.get(ref); err == nil {
-			fmt.Printf("Overwriting %s (%q) with %q\n", ref.String(), existing.PrintableName(), s.printableName())
-		}
-		err = memory.set(ref, &program)
+		err = memory.set(dest, &program)
 	}
 	return err
 }

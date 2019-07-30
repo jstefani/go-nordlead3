@@ -13,10 +13,7 @@ func TestDumpPerformanceSysex(t *testing.T) {
 	}
 	performanceSysex := inputSysexStruct.rawBitstream()
 
-	err = memory.Import(inputSysex)
-	if err != nil {
-		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
-	}
+	helperLoadFromSysex(t, memory, inputSysex)
 
 	p, err := memory.get(validPerformanceRef)
 	performance := p.(*Performance)

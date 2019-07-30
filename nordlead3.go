@@ -44,15 +44,16 @@ var Categories = [15]string{
 }
 
 var (
-	ErrXferTypeMismatch = errors.New("Cannot move different types of patches")
-	ErrInvalidLocation  = errors.New("Invalid location")
-	ErrUninitialized    = errors.New("That location is not initialized")
-	ErrInvalidCategory  = errors.New("Invalid category")
-	ErrInvalidName      = errors.New("Name cannot be blank nor exceed 16 characters")
-	ErrMemoryOccupied   = errors.New("One or more destination memory locations are not blank")
-	ErrMemoryOverflow   = errors.New("Not enough room in that bank")
-	ErrNoDataToWrite    = errors.New("No data to write to file")
-	ErrNoPerfCategory   = errors.New("Performances do not support categories.")
+	ErrXferTypeMismatch   = errors.New("Cannot move different types of patches")
+	ErrInvalidLocation    = errors.New("Invalid location")
+	ErrUninitialized      = errors.New("That location is not initialized")
+	ErrInvalidCategory    = errors.New("Invalid category")
+	ErrInvalidName        = errors.New("Name cannot be blank nor exceed 16 characters")
+	ErrMemoryOccupied     = errors.New("One or more destination memory locations are not blank")
+	ErrMemoryOverflow     = errors.New("Not enough room in that bank")
+	ErrNoDataToWrite      = errors.New("No data to write to file")
+	ErrNoPerfCategory     = errors.New("Performances do not support categories.")
+	ErrImportTypeMismatch = errors.New("Sysex does not contain the right kind of patch (e.g. program when expecting performance).")
 )
 
 func populateStructFromBitstream(i interface{}, data []byte) error {

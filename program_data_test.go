@@ -13,10 +13,7 @@ func TestDumpProgramSysex(t *testing.T) {
 	}
 	programSysex := inputSysexStruct.rawBitstream()
 
-	err = memory.Import(inputSysex)
-	if err != nil {
-		t.Errorf("Test sysex seems incorrect, need valid sysex to test dumping: %q", err)
-	}
+	helperLoadFromSysex(t, memory, inputSysex)
 	p, err := memory.get(validProgramRef)
 	program := p.(*Program)
 
