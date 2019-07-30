@@ -3,7 +3,10 @@ package nordlead3
 /*
 TODO:
 
- - Expand slot concept to nl3edit too (move, rename, delete)
+ - Try to keep NL3Edit at least rudimentarily functional.
+ - Add a "library" mode to the patch memory, where it doesn't enforce bank sizes, allows performances to be categorized, and sorts always by name.
+   - Optionally have it sort by the author (split by space and only match if the last token is all caps)
+   - Probably easiest to do this by removing the arbitrary sizing on the performances and programs arrays and checking the limits explicitly when importing and moving.
  - Try to identify the difference between v1.18 and v1.20 Sysex and see if you can figure out where the missing arp sync settings are.
  - Add two sane init patches (an init and an initFM), both with the right sync bits set.
 */

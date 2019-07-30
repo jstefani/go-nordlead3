@@ -313,13 +313,13 @@ func (memory *PatchMemory) SprintPerformances(omitBlank bool) string {
 
 func (memory *PatchMemory) SwapPerformances(a MemoryLocation, b MemoryLocation) error {
 	aref := patchRef{PerformanceT, MemoryT, a.index()}
-	bref := patchRef{PerformanceT, MemoryT, a.index()}
+	bref := patchRef{PerformanceT, MemoryT, b.index()}
 	return memory.swap(aref, bref)
 }
 
 func (memory *PatchMemory) SwapPrograms(a MemoryLocation, b MemoryLocation) error {
 	aref := patchRef{ProgramT, MemoryT, a.index()}
-	bref := patchRef{ProgramT, MemoryT, a.index()}
+	bref := patchRef{ProgramT, MemoryT, b.index()}
 	return memory.swap(aref, bref)
 }
 
