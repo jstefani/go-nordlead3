@@ -13,6 +13,8 @@ import (
 const (
 	sysexStart = 0xF0
 	sysexEnd   = 0xF7
+	vendorNord = 0x33
+	modelNL3   = 0x09
 )
 
 const (
@@ -242,4 +244,20 @@ func toSysex(obj sysexable, ref patchRef) (*[]byte, error) {
 
 	sysex := buffer.Bytes()
 	return &sysex, nil
+}
+
+// A bufio.Scanner split function to correctly parse the sysex you're looking for out of a datastream
+func splitSysex(vendor, model uint8) func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	header := []byte{sysexStart, vendor}
+	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if si := bytes.Index(data, header); si >= 0 {
+			if bytes.IndexByte(data[si:si+4], model) == si+3 {
+				if ei := bytes.Index(data, []byte{sysexEnd}); ei >= 0 {
+					return ei + 1, data[si : ei+1], nil
+				}
+			}
+		}
+
+		return 0, nil, nil // no complete token in the buffer yet
+	}
 }

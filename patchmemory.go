@@ -98,6 +98,10 @@ func (memory *PatchMemory) ExportPerformanceBank(bank int, writer io.Writer) err
 	return memory.exportLocations(refs, writer)
 }
 
+func (memory *PatchMemory) ExportPerformanceSlot(writer io.Writer) error {
+	return memory.exportLocations([]patchRef{performanceSlotRef}, writer)
+}
+
 func (memory *PatchMemory) ExportProgram(ml MemoryLocation, writer io.Writer) error {
 	refs := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
 	return memory.exportLocations(refs, writer)
@@ -110,6 +114,10 @@ func (memory *PatchMemory) ExportProgramBank(bank int, writer io.Writer) error {
 		refs = append(refs, patchRef{ProgramT, MemoryT, index(bank, i)})
 	}
 	return memory.exportLocations(refs, writer)
+}
+
+func (memory *PatchMemory) ExportProgramSlot(slot int, writer io.Writer) error {
+	return memory.exportLocations([]patchRef{patchRef{ProgramT, SlotT, slot}}, writer)
 }
 
 func (memory *PatchMemory) Import(rawSysex []byte) error {
@@ -136,37 +144,19 @@ func (memory *PatchMemory) Import(rawSysex []byte) error {
 
 func (memory *PatchMemory) ImportFrom(input io.Reader) (numValid int, numInvalid int, err error) {
 	validFound, invalidFound := 0, 0
-	reader := bufio.NewReader(input)
+	scanner := bufio.NewScanner(input)
+	scanner.Split(splitSysex(vendorNord, modelNL3))
 
-	// TODO: Refactor this as a scanner break function and scan the string elegantly
-	for {
-		// scan until we see an F0, we hit EOF, or an error occurs.
-		_, err := reader.ReadBytes(sysexStart)
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return validFound, invalidFound, err
-			}
+	for ok := scanner.Scan(); ; ok = scanner.Scan() {
+		if !ok {
+			return validFound, invalidFound, scanner.Err()
 		}
-
-		// Read the sysex header to see if it's data we care about
-		header, _ := reader.Peek(3)
-		header[1] = 0x00 // We don't care about the destination address
-
-		// 0x33 = Clavia, 0x00 = dest. addr blanked above, 0x09 = NL3 sysex model ID
-		if string(header) == string([]byte{0x33, 0x00, 0x09}) {
-			sysex, err := reader.ReadBytes(sysexEnd)
-			if err != nil {
-				return 0, 0, err
-			}
-
-			err = memory.Import(sysex)
-			if err == nil {
-				validFound++
-			} else {
-				invalidFound++
-			}
+		sysex := scanner.Bytes()
+		err = memory.Import(sysex)
+		if err == nil {
+			validFound++
+		} else {
+			invalidFound++
 		}
 	}
 	return validFound, invalidFound, nil
