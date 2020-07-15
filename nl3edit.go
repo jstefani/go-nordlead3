@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/malacalypse/nordlead3"
+	"github.com/malacalypse/go-nordlead3"
 	"github.com/mitchellh/go-homedir"
 )
 
@@ -427,7 +427,7 @@ func loadFile(memory *nordlead3.PatchMemory, filename string) {
 	}
 	fmt.Printf("Opening %q\n", filename)
 
-	validFound, invalidFound, err := memory.ImportFrom(file)
+	validFound, invalidFound, err := memory.Import(file, false)
 	if err != nil {
 		panic(err)
 	}
