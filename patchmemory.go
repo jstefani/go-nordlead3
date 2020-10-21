@@ -89,6 +89,14 @@ func (memory *PatchMemory) ExportPerformance(ml MemoryLocation, writer io.Writer
 	return memory.exportLocations(refs, writer)
 }
 
+func (memory *PatchMemory) ExportPerformanceAsSlot(ml MemoryLocation, writer io.Writer) error {
+	origSlotContents := memory.slotPerformance
+	memory.CopyPerformanceToSlot(ml)
+	err := memory.exportLocations([]patchRef{performanceSlotRef}, writer)
+	memory.slotPerformance = origSlotContents
+	return err
+}
+
 func (memory *PatchMemory) ExportPerformanceBank(bank int, writer io.Writer) error {
 	var refs []patchRef
 
@@ -105,6 +113,14 @@ func (memory *PatchMemory) ExportPerformanceSlot(writer io.Writer) error {
 func (memory *PatchMemory) ExportProgram(ml MemoryLocation, writer io.Writer) error {
 	refs := []patchRef{patchRef{ProgramT, MemoryT, ml.index()}}
 	return memory.exportLocations(refs, writer)
+}
+
+func (memory *PatchMemory) ExportProgramAsSlot(ml MemoryLocation, slot int, writer io.Writer) error {
+	origSlotContents := memory.slotPrograms[slot]
+	memory.CopyProgramToSlot(ml, slot)
+	err := memory.exportLocations([]patchRef{patchRef{ProgramT, SlotT, slot}}, writer)
+	memory.slotPrograms[slot] = origSlotContents // put it back
+	return err
 }
 
 func (memory *PatchMemory) ExportProgramBank(bank int, writer io.Writer) error {
